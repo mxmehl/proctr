@@ -1,0 +1,65 @@
+[project]
+name = "lsrenovate"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = [
+    "renovate",
+    "cli",
+    "tui",
+    "interactive",
+    "automation",
+    "management",
+    "dependency",
+    "update",
+]
+authors = [{ name = "Max Mehl", email = "mail@mehl.mx" }]
+requires-python = ">=3.12"
+dependencies = ["platformdirs==4.3.6", "pyyaml==6.0.2", "textual==0.86.3"]
+
+[project.urls]
+Repository = "https://github.com/mxmehl/lsrenovate"
+Changelog = "https://github.com/mxmehl/lsrenovate/blob/main/CHANGELOG.md"
+
+[project.scripts]
+lsrenovate = "lsrenovate:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.15.10",
+    "ty>=0.0.29",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.32,<0.12.0"]
+build-backend = "uv_build"
+
+# FORMATTING and LINTING settings
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "T",
+    "FBT",
+    "LOG015",
+    "COM812",
+    "ERA001",
+    "S310",
+    "D205",
+    "D212",
+    "PTH123",
+    "CPY",
+]
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/*" = ["S101", "PLR", "PT011", "ANN001"]
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+# TY settings
+[tool.ty.src]
+include = ["src"]

@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+# SPDX-License-Identifier: CC0-1.0
+
+[settings]
+use_versions_host_track = false
+
+[tools]
+python = "3.14"
+uv = "latest"
+
+[vars]
+app_dir = "src"
+
+[tasks."lint:ty"]
+description = "Run ty type checks"
+run = "uv run ty check"
+
+[tasks."lint:ruff-lint"]
+description = "Run ruff linter"
+run = ["uv run ruff check ."]
+
+[tasks."lint:ruff-format"]
+description = "Run ruff formatter"
+run = ["uv run ruff format --check ."]
+
+# [tasks."lint:reuse"]
+# description = "Run reuse license compliance check"
+# run = "uv run reuse lint"
+
+[tasks.pytest]
+description = "Run pytest"
+run = "uv run pytest"
+
+[tasks."fix:ruff-format"]
+description = "Fix ruff formatting issues"
+run = ["uv run ruff format ."]
+
+[tasks."fix:ruff-lint"]
+description = "Fix ruff linting issues"
+run = ["uv run ruff check --fix"]
+
+[tasks.test-all]
+description = "Run all tests and checks"
+depends = ["lint:*", "pytest"]
+run = "echo 'SUCCESS: All checks passed!'"
+
+[tasks.fix-all]
+description = "Run all fixes"
+depends = ["fix:ruff-format", "fix:ruff-lint"]
