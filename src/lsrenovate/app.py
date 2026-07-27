@@ -129,6 +129,8 @@ class LsRenovateApp(App[None]):
 
     def on_mount(self) -> None:
         """Set up the table columns and trigger the initial PR fetch."""
+        if self.config.token_command_error:
+            self.notify(self.config.token_command_error, severity="warning", timeout=10)
         table = self.query_one(DataTable)
         column_keys = table.add_columns(*COLUMNS)
         self._sel_column_key = column_keys[COLUMNS.index("Sel")]

@@ -57,7 +57,8 @@ uv sync --no-dev
 
 2. **Provide a GitHub token**, in order of precedence:
    - `GITHUB_TOKEN` environment variable, or
-   - `github_token` in the config file, or
+   - `github_token_command` in the config file — a command that prints the token to stdout, e.g. a password manager CLI, or
+   - `github_token` in the config file (plaintext), or
    - fall back to `gh`'s own stored authentication.
 
 3. **Run it:**
@@ -72,11 +73,14 @@ lsrenovate reads an optional TOML config file at your platform's user config dir
 
 ```toml
 github_token = "ghp_..."               # optional; env var GITHUB_TOKEN takes precedence
+github_token_command = ["kpxc_get_password", "cli://token-gh-cli"]  # optional; takes precedence over github_token
 merge_method = "squash"                # "squash" (default), "merge", or "rebase"
 labels = ["Renovate"]                  # PR label(s) to filter on; all must match
 sort_by = "repo"                       # "repo" (default), "age", or "title"
 myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this config
 ```
+
+`github_token_command` is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If the command fails, lsrenovate falls back to `github_token` (or `gh`'s own auth) and shows a warning on startup.
 
 ## Keybindings
 

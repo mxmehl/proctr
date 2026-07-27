@@ -51,3 +51,55 @@ def test_config_invalid_labels_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Invalid labels"):
         load_config(config_path)
+
+
+def test_config_token_command_is_used(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A configured github_token_command is executed and its stdout used as the token."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        'github_token_command = ["python3", "-c", "print(\\"cmd-token\\")"]\n'
+        'github_token = "plaintext-token"\n'
+    )
+
+    cfg = load_config(config_path)
+
+    assert cfg.github_token == "cmd-token"
+    assert cfg.token_command_error is None
+
+
+def test_config_env_var_takes_precedence_over_token_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GITHUB_TOKEN wins even when a github_token_command is also configured."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('github_token_command = ["python3", "-c", "print(\\"cmd-token\\")"]\n')
+
+    monkeypatch.setenv("GITHUB_TOKEN", "env-token")
+    cfg = load_config(config_path)
+
+    assert cfg.github_token == "env-token"
+
+
+def test_config_token_command_failure_falls_back_gracefully(tmp_path: Path) -> None:
+    """A failing github_token_command falls back to the plaintext token, with an error noted."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        'github_token_command = ["python3", "-c", "import sys; sys.exit(1)"]\n'
+        'github_token = "plaintext-token"\n'
+    )
+
+    cfg = load_config(config_path)
+
+    assert cfg.github_token == "plaintext-token"
+    assert cfg.token_command_error is not None
+    assert "github_token_command failed" in cfg.token_command_error
+
+
+def test_config_invalid_token_command_raises(tmp_path: Path) -> None:
+    """A non-list github_token_command value in the config file raises ValueError."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('github_token_command = "not-a-list"\n')
+
+    with pytest.raises(ValueError, match="Invalid github_token_command"):
+        load_config(config_path)
