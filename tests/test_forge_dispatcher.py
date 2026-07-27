@@ -123,7 +123,7 @@ def test_dispatcher_uses_api_host_override_for_gitlab_env() -> None:
 
     forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
 
-    assert forge._env()["GITLAB_HOST"] == "ssh.gitlab.example.com"  # noqa: SLF001
+    assert forge._env()["GITLAB_HOST"] == "ssh.gitlab.example.com"
 
 
 def test_dispatcher_uses_per_instance_labels_over_global_default() -> None:
@@ -138,7 +138,7 @@ def test_dispatcher_uses_per_instance_labels_over_global_default() -> None:
 
     forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
 
-    assert forge._labels == ["dependencies"]  # noqa: SLF001
+    assert forge._labels == ["dependencies"]
 
 
 def test_dispatcher_falls_back_to_global_labels_when_instance_labels_unset() -> None:
@@ -151,4 +151,4 @@ def test_dispatcher_falls_back_to_global_labels_when_instance_labels_unset() -> 
 
     forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
 
-    assert forge._labels == ["Renovate"]  # noqa: SLF001
+    assert forge._labels == ["Renovate"]

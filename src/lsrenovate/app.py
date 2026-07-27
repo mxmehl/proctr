@@ -323,11 +323,26 @@ class LsRenovateApp(App[None]):
 
     async def _merge_and_refresh(self, prs: list[PullRequest]) -> None:
         method = self.config.merge_method
+        total = len(prs)
+        if total > 1:
+            self.notify(f"Merging {total} PR(s)…", timeout=5)
+
         results: list[MergeResult] = []
-        for pr in prs:
+        for index, pr in enumerate(prs, start=1):
+            if total > 1:
+                self.sub_title = f"Merging {index}/{total}: {_pr_key(pr)}…"
             forge = self.resolve_forge(pr.repo)
             result = await asyncio.to_thread(forge.merge_pr, pr, method=method)
             results.append(result)
+            if total > 1:
+                if result.success:
+                    self.notify(f"[{index}/{total}] Merged {_pr_key(pr)}", timeout=5)
+                else:
+                    self.notify(
+                        f"[{index}/{total}] FAILED {_pr_key(pr)}: {result.message}",
+                        severity="error",
+                        timeout=8,
+                    )
 
         summary = build_merge_summary(results)
         any_failed = any(not r.success for r in results)

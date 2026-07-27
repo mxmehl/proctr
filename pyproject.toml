@@ -44,7 +44,19 @@ line-length = 100
 select = ["ALL"]
 ignore = ["T", "FBT", "LOG015", "COM812", "ERA001", "S310", "D205", "D212", "PTH123", "CPY"]
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/*" = ["S101", "PLR", "PT011", "ANN001", "S105", "S106", "DTZ001", "D107"]
+"tests/*" = [
+    "S101",
+    "PLR",
+    "PT011",
+    "ANN001",
+    "S105",
+    "S106",
+    "DTZ001",
+    "D107",
+    "SLF001",
+    "ARG005",
+    "ASYNC240",
+]
 "scripts/*" = ["INP001", "D103", "T201"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"

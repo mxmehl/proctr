@@ -3,10 +3,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
 
+import asyncio
+import tempfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
-from lsrenovate.app import _mergeable_cell, _pipeline_cell, build_merge_summary
+import pytest
+
+from lsrenovate.app import LsRenovateApp, _mergeable_cell, _pipeline_cell, build_merge_summary
+from lsrenovate.config import Config, GitHubConfig
 from lsrenovate.forges.base import MergeResult, PullRequest
 from lsrenovate.projects import Repo
 
@@ -107,3 +113,92 @@ def test_pipeline_cell_plain_for_unknown_or_no_pipeline() -> None:
     """Statuses that are neither a known success nor failure stay uncolored."""
     for value in ("N/A", "running", "pending", "BLOCKED"):
         assert str(_pipeline_cell(value).style) == ""
+
+
+@pytest.fixture
+def app_for_merge() -> LsRenovateApp:
+    """A minimal LsRenovateApp stand-in with notify/resolve_forge/config mocked out.
+
+    Avoids spinning up the real Textual app harness (no widgets are
+    touched by _merge_and_refresh besides notify/sub_title) while still
+    exercising the real method under test. sub_title is a Textual
+    reactive that requires the App's DOM machinery to be initialized, so
+    it's shadowed with a plain instance attribute here.
+    """
+    app = LsRenovateApp.__new__(LsRenovateApp)
+    app.notify = MagicMock()
+    app.config = MagicMock(merge_method="squash")
+    app.selected = set()
+    app.__dict__["sub_title"] = ""
+
+    async def fake_fetch_and_populate() -> None:
+        pass
+
+    app._fetch_and_populate = fake_fetch_and_populate
+    return app
+
+
+def test_merge_single_pr_skips_progress_notifications(app_for_merge: LsRenovateApp) -> None:
+    """A single-PR merge only gets the final summary, not batch-progress noise."""
+    pr = _pr(1)
+    forge = MagicMock()
+    forge.merge_pr.return_value = MergeResult(pull_request=pr, success=True, message="Merged")
+    app_for_merge.resolve_forge = lambda repo: forge
+
+    asyncio.run(app_for_merge._merge_and_refresh([pr]))
+
+    messages = [call.args[0] for call in app_for_merge.notify.call_args_list]
+    assert len(messages) == 1
+    assert "Merged 1/1 PR(s)." in messages[0]
+
+
+def test_merge_batch_reports_start_and_per_pr_progress() -> None:
+    """A multi-PR merge notifies the batch start and each PR's outcome as it completes.
+
+    Uses the real Textual app harness (run_test) with a real LsRenovateApp
+    instance, since sub_title is a reactive property that needs the App's
+    DOM machinery initialized (via App.__init__) before it can be assigned
+    — a bare __new__() instance can't set it.
+    """
+
+    async def scenario() -> list[str]:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as myprojects_file:
+            myprojects_file.write("myprojects: {}\n")
+            myprojects_path = Path(myprojects_file.name)
+
+        config = Config(
+            github=GitHubConfig(token=None),
+            merge_method="squash",
+            myprojects_path=myprojects_path,
+            sort_by="repo",
+            labels=["Renovate"],
+            gitlab_instances={},
+            gitea_instances={},
+        )
+        app = LsRenovateApp(config=config)
+        prs = [_pr(1), _pr(2), _pr(3)]
+        forge = MagicMock()
+        forge.merge_pr.side_effect = [
+            MergeResult(pull_request=prs[0], success=True, message="Merged"),
+            MergeResult(pull_request=prs[1], success=False, message="conflict"),
+            MergeResult(pull_request=prs[2], success=True, message="Merged"),
+        ]
+        app.resolve_forge = lambda repo: forge
+
+        async def fake_fetch_and_populate() -> None:
+            pass
+
+        app._fetch_and_populate = fake_fetch_and_populate
+
+        async with app.run_test():
+            app.notify = MagicMock()
+            await app._merge_and_refresh(prs)
+        myprojects_path.unlink(missing_ok=True)
+        return [call.args[0] for call in app.notify.call_args_list]
+
+    messages = asyncio.run(scenario())
+    assert messages[0] == "Merging 3 PR(s)…"
+    assert "[1/3] Merged mxmehl/my-tool#1" in messages[1]
+    assert "[2/3] FAILED mxmehl/my-tool#2: conflict" in messages[2]
+    assert "[3/3] Merged mxmehl/my-tool#3" in messages[3]
+    assert "Merged 2/3 PR(s)." in messages[4]
