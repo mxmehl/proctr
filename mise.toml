@@ -23,9 +23,9 @@ run = ["uv run ruff check ."]
 description = "Run ruff formatter"
 run = ["uv run ruff format --check ."]
 
-# [tasks."lint:reuse"]
-# description = "Run reuse license compliance check"
-# run = "uv run reuse lint"
+[tasks."lint:reuse"]
+description = "Run reuse license compliance check"
+run = "uv run reuse lint"
 
 [tasks.pytest]
 description = "Run pytest"

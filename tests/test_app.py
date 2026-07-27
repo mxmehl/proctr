@@ -1,9 +1,7 @@
-"""Minimal assert-based self-check for merge summary building.
+"""Tests for the merge summary builder."""
 
-Run with: uv run python tests/test_task6.py
-"""
-
-from __future__ import annotations
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
 
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +34,7 @@ def _pr(number: int) -> PullRequest:
 
 
 def test_build_merge_summary_all_success() -> None:
+    """An all-success batch reports N/N merged with no failure lines."""
     results = [
         MergeResult(pull_request=_pr(1), success=True, message="Merged"),
         MergeResult(pull_request=_pr(2), success=True, message="Merged"),
@@ -46,6 +45,7 @@ def test_build_merge_summary_all_success() -> None:
 
 
 def test_build_merge_summary_mixed_results() -> None:
+    """A mixed batch reports the correct ratio and one FAILED line per failure."""
     results = [
         MergeResult(pull_request=_pr(1), success=True, message="Merged"),
         MergeResult(pull_request=_pr(2), success=False, message="merge conflict"),
@@ -58,14 +58,8 @@ def test_build_merge_summary_mixed_results() -> None:
 
 
 def test_build_merge_summary_all_failed() -> None:
+    """An all-failed batch reports 0/N merged with the failure reason."""
     results = [MergeResult(pull_request=_pr(1), success=False, message="already merged")]
     summary = build_merge_summary(results)
     assert "Merged 0/1 PR(s)." in summary
     assert "FAILED mxmehl/my-tool#1: already merged" in summary
-
-
-if __name__ == "__main__":
-    test_build_merge_summary_all_success()
-    test_build_merge_summary_mixed_results()
-    test_build_merge_summary_all_failed()
-    print("All task 6 checks passed.")

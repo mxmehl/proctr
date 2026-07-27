@@ -5,6 +5,9 @@ top-level key under `myprojects` in the YAML file (not derived from the
 repo URL's host).
 """
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 from dataclasses import dataclass

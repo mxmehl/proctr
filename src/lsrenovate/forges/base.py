@@ -5,13 +5,19 @@ so gitlab (glab) and gitea (tea) adapters can be added later without
 touching the app/UI layer.
 """
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from typing import TYPE_CHECKING
 
-from lsrenovate.projects import Repo
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from lsrenovate.projects import Repo
 
 
 @dataclass(frozen=True)

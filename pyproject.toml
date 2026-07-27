@@ -1,7 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+# SPDX-License-Identifier: CC0-1.0
+
 [project]
 name = "lsrenovate"
 version = "0.1.0"
-description = "Add your description here"
+description = "Terminal UI for triaging open Renovate pull requests across multiple repositories"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -16,7 +19,7 @@ keywords = [
     "update",
 ]
 authors = [{ name = "Max Mehl", email = "mail@mehl.mx" }]
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = ["platformdirs==4.3.6", "pyyaml==6.0.2", "textual==0.86.3"]
 
 [project.urls]
@@ -27,11 +30,7 @@ Changelog = "https://github.com/mxmehl/lsrenovate/blob/main/CHANGELOG.md"
 lsrenovate = "lsrenovate:main"
 
 [dependency-groups]
-dev = [
-    "pytest>=9.1.1",
-    "ruff>=0.15.10",
-    "ty>=0.0.29",
-]
+dev = ["pytest>=9.1.1", "ruff>=0.15.10", "ty>=0.0.29"]
 
 [build-system]
 requires = ["uv_build>=0.11.32,<0.12.0"]
@@ -43,20 +42,10 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = [
-    "T",
-    "FBT",
-    "LOG015",
-    "COM812",
-    "ERA001",
-    "S310",
-    "D205",
-    "D212",
-    "PTH123",
-    "CPY",
-]
+ignore = ["T", "FBT", "LOG015", "COM812", "ERA001", "S310", "D205", "D212", "PTH123", "CPY"]
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/*" = ["S101", "PLR", "PT011", "ANN001"]
+"tests/*" = ["S101", "PLR", "PT011", "ANN001", "S105", "S106", "DTZ001", "D107"]
+"scripts/*" = ["INP001", "D103", "T201"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

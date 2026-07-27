@@ -1,12 +1,17 @@
 """Concurrent PR fetching across all repos for a given forge."""
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import Forge, PullRequest
-from lsrenovate.projects import Repo
+if TYPE_CHECKING:
+    from lsrenovate.forges.base import Forge, PullRequest
+    from lsrenovate.projects import Repo
 
 MAX_WORKERS = 8
 

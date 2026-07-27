@@ -1,23 +1,32 @@
 """GitHub forge adapter backed by the `gh` CLI."""
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from lsrenovate.forges.base import Forge, MergeResult, PullRequest
-from lsrenovate.projects import Repo
+
+if TYPE_CHECKING:
+    from lsrenovate.projects import Repo
 
 DEFAULT_LABELS = ("Renovate",)
 LIST_FIELDS = "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus"
+GH_EXECUTABLE = shutil.which("gh") or "gh"
 
 
 class GitHubForge(Forge):
     """Lists and merges PRs matching configured label(s) via the gh CLI."""
 
     def __init__(self, github_token: str | None, labels: list[str] | None = None) -> None:
+        """Initialize with an optional token and label filter (defaults to DEFAULT_LABELS)."""
         self._github_token = github_token
         self._labels = labels or list(DEFAULT_LABELS)
 
@@ -32,7 +41,7 @@ class GitHubForge(Forge):
         label_flags = [flag for label in self._labels for flag in ("--label", label)]
         result = subprocess.run(  # noqa: S603
             [
-                "gh",
+                GH_EXECUTABLE,
                 "pr",
                 "list",
                 "-R",
@@ -65,7 +74,7 @@ class GitHubForge(Forge):
         """Attempt to merge a single PR via gh pr merge, never raising."""
         result = subprocess.run(  # noqa: S603
             [
-                "gh",
+                GH_EXECUTABLE,
                 "pr",
                 "merge",
                 str(pull_request.number),

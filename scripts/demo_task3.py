@@ -1,5 +1,8 @@
 """Demo: fetch Renovate PRs across all github repos in parallel, with timing."""
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 import time
@@ -20,9 +23,8 @@ def main() -> None:
     result = fetch_all_prs(repos, forge)
     elapsed = time.monotonic() - start
 
-    print(
-        f"Done in {elapsed:.2f}s: {len(result.pull_requests)} PR(s), {len(result.errors)} repo error(s)\n"
-    )
+    n_prs, n_errors = len(result.pull_requests), len(result.errors)
+    print(f"Done in {elapsed:.2f}s: {n_prs} PR(s), {n_errors} repo error(s)\n")
     for pr in result.pull_requests:
         print(f"  {pr.repo.full_name} #{pr.number} {pr.title!r} mergeable={pr.mergeable}")
     for err in result.errors:

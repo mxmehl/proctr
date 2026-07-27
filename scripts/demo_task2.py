@@ -1,5 +1,8 @@
 """Demo: fetch real Renovate PRs for a couple of repos (read-only)."""
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 import sys
@@ -25,9 +28,8 @@ def main() -> None:
             continue
         print(f"{repo.full_name}: {len(prs)} open Renovate PR(s)")
         for pr in prs:
-            print(
-                f"  #{pr.number} {pr.title!r} mergeable={pr.mergeable} state={pr.merge_state_status}"
-            )
+            state = pr.merge_state_status
+            print(f"  #{pr.number} {pr.title!r} mergeable={pr.mergeable} state={state}")
 
 
 if __name__ == "__main__":

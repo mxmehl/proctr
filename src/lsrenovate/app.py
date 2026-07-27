@@ -1,5 +1,8 @@
 """Textual TUI application for managing open Renovate PRs."""
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 import asyncio
@@ -7,17 +10,25 @@ import os
 import subprocess
 import webbrowser
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, ClassVar
 
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.widgets import DataTable, Footer, Header
 
-from lsrenovate.config import Config, load_config
-from lsrenovate.fetch import FetchResult, fetch_all_prs
-from lsrenovate.forges.base import MergeResult, PullRequest
+if TYPE_CHECKING:
+    from textual.widgets.data_table import ColumnKey
+
+from lsrenovate.config import load_config
+from lsrenovate.fetch import fetch_all_prs
 from lsrenovate.forges.github import GitHubForge
 from lsrenovate.projects import load_repos
+
+if TYPE_CHECKING:
+    from lsrenovate.config import Config
+    from lsrenovate.fetch import FetchResult
+    from lsrenovate.forges.base import MergeResult, PullRequest
 
 COLUMNS = ("Sel", "Repo", "Title", "Age", "Merge state", "Mergeable", "PR")
 CHECKED = "[X]"
@@ -34,7 +45,8 @@ SORT_KEYS: dict[str, tuple[str, ...]] = {
 DEFAULT_SORT_BY = "repo"
 
 
-def _sort_value(pr: PullRequest, field: str):
+def _sort_value(pr: PullRequest, field: str) -> str | datetime:
+    """Return the sortable value for a PR's given field name."""
     if field == "repo":
         return pr.repo.full_name
     return getattr(pr, field)
@@ -61,10 +73,12 @@ def _format_age(created_at: datetime) -> str:
 
 
 def _pr_key(pr: PullRequest) -> str:
+    """Return the unique row/selection key for a PR."""
     return f"{pr.repo.full_name}#{pr.number}"
 
 
 def _is_ready_to_merge(pr: PullRequest) -> bool:
+    """Return whether a PR's mergeable/merge state indicate it's ready to merge."""
     return pr.mergeable == READY_MERGEABLE and pr.merge_state_status == READY_MERGE_STATE
 
 
@@ -78,8 +92,7 @@ def build_merge_summary(results: list[MergeResult]) -> str:
     succeeded = [r for r in results if r.success]
     failed = [r for r in results if not r.success]
     lines = [f"Merged {len(succeeded)}/{len(results)} PR(s)."]
-    for r in failed:
-        lines.append(f"  FAILED {_pr_key(r.pull_request)}: {r.message}")
+    lines.extend(f"  FAILED {_pr_key(r.pull_request)}: {r.message}" for r in failed)
     return "\n".join(lines)
 
 
@@ -87,7 +100,7 @@ class LsRenovateApp(App[None]):
     """Lists open Renovate PRs across all configured GitHub repos."""
 
     TITLE = "lsrenovate"
-    BINDINGS = [
+    BINDINGS: ClassVar = [
         ("r", "refresh_prs", "Refresh"),
         ("space", "toggle_selection", "Select"),
         ("o", "open_browser", "Open in browser"),
@@ -98,21 +111,24 @@ class LsRenovateApp(App[None]):
     ]
 
     def __init__(self, config: Config | None = None) -> None:
+        """Initialize the app, resolving configuration and the GitHub forge adapter."""
         super().__init__()
         self.config = config or load_config()
         self.forge = GitHubForge(github_token=self.config.github_token, labels=self.config.labels)
         self.pull_requests: list[PullRequest] = []
         self.selected: set[str] = set()
-        self._sel_column_key = None
+        self._sel_column_key: ColumnKey | None = None  # set in on_mount
         self.sort_by = self.config.sort_by if self.config.sort_by in SORT_KEYS else DEFAULT_SORT_BY
 
     def compose(self) -> ComposeResult:
+        """Build the app's widget tree."""
         yield Header()
         with Container():
             yield DataTable(id="pr-table", cursor_type="row")
         yield Footer()
 
     def on_mount(self) -> None:
+        """Set up the table columns and trigger the initial PR fetch."""
         table = self.query_one(DataTable)
         column_keys = table.add_columns(*COLUMNS)
         self._sel_column_key = column_keys[COLUMNS.index("Sel")]
@@ -201,6 +217,9 @@ class LsRenovateApp(App[None]):
         table = self.query_one(DataTable)
         if table.row_count == 0:
             return
+        assert self._sel_column_key is not None, (  # noqa: S101
+            "on_mount must run before toggling selection"
+        )
         row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
         key = str(row_key.value)
         if key in self.selected:
@@ -275,6 +294,7 @@ class LsRenovateApp(App[None]):
 
 
 def main() -> None:
+    """Run the lsrenovate TUI application."""
     LsRenovateApp().run()
 
 

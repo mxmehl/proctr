@@ -4,6 +4,9 @@ Resolution order for the GitHub token: GITHUB_TOKEN env var, then the TOML
 config file, then nothing (falls back to gh's own auth state).
 """
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 import os

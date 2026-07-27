@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: CC0-1.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
+name: Vulnerability Check of Latest Release/Tag
+
+on:
+  workflow_dispatch: # allow to trigger manually
+  schedule:
+    - cron: "35 9 * * 1" # run a check once a week
+
+permissions:
+  contents: read
+
+jobs:
+  osv-check:
+    runs-on: ubuntu-latest
+    if: github.repository == 'mxmehl/lsrenovate'
+    steps:
+      - uses: mxmehl/latest-release-vulnerability-status@ae71b45db2a04097be8743ec616b518147057933 # v1.2.4

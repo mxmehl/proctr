@@ -1,5 +1,8 @@
 """Demo: print all github-forge repos derived from myprojects.yaml."""
 
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
 from __future__ import annotations
 
 from lsrenovate.config import load_config

@@ -1,0 +1,113 @@
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+# SPDX-License-Identifier: CC0-1.0
+
+name: Test suites
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Test using the tool via uv on different OSes and python versions
+  test-os-python-matrix:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 10
+      # do not abort the whole test job if one combination in the matrix fails
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-24.04]
+        include:
+          - python-version: "3.10"
+            os: macos-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/uvbuild
+        with:
+          python: ${{ matrix.python-version }}
+          uv_args: --no-dev
+      - name: Execute lsrenovate
+        run: |
+          uv run lsrenovate --help
+
+  # Test building the package and installing it via pip3
+  test-build-install:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.10"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+      - name: Build package
+        run: uv build
+      - name: Install package
+        run: pip3 install dist/lsrenovate-*.tar.gz
+      - name: Run package
+        run: lsrenovate --help
+
+  pytest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/uvbuild
+      - name: Test with pytest
+        run: uv run pytest
+
+  # Quality checks
+  ruff-lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/uvbuild
+      - name: Lint with ruff
+        run: uv run ruff check
+
+  ruff-format:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/uvbuild
+      - name: Check formatting with ruff
+        run: uv run ruff format --check
+
+  ty:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/uvbuild
+      - name: Test typing with ty
+        run: uv run ty check
+
+  # REUSE
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check REUSE Compliance
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0

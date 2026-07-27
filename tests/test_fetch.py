@@ -1,9 +1,7 @@
-"""Minimal assert-based self-check for concurrent fetch aggregation.
+"""Tests for concurrent PR fetching across repos."""
 
-Run with: uv run python tests/test_task3.py
-"""
-
-from __future__ import annotations
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
 
 from datetime import datetime
 from pathlib import Path
@@ -31,8 +29,10 @@ class FakeForge(Forge):
         self._failing_repo_name = failing_repo_name
 
     def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+        """Raise for the designated repo, otherwise return one canned PR."""
         if repo.name == self._failing_repo_name:
-            raise RuntimeError("simulated gh failure")
+            msg = "simulated gh failure"
+            raise RuntimeError(msg)
         return [
             PullRequest(
                 repo=repo,
@@ -47,25 +47,20 @@ class FakeForge(Forge):
         ]
 
     def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:
+        """Not needed for these tests."""
         raise NotImplementedError
 
 
 def test_fetch_all_prs_aggregates_and_isolates_failures() -> None:
+    """A single failing repo's exception is captured as an error, not raised."""
     repos = [_repo("repo-a"), _repo("repo-b"), _repo("repo-c")]
     forge = FakeForge(failing_repo_name="repo-b")
 
     result = fetch_all_prs(repos, forge)
 
-    assert len(result.pull_requests) == 2, (
-        f"expected 2 successful PRs, got {len(result.pull_requests)}"
-    )
+    assert len(result.pull_requests) == 2
     assert {pr.repo.name for pr in result.pull_requests} == {"repo-a", "repo-c"}
 
-    assert len(result.errors) == 1, f"expected 1 error, got {len(result.errors)}"
+    assert len(result.errors) == 1
     assert result.errors[0].repo.name == "repo-b"
     assert "simulated gh failure" in result.errors[0].error
-
-
-if __name__ == "__main__":
-    test_fetch_all_prs_aggregates_and_isolates_failures()
-    print("All task 3 checks passed.")
