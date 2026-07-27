@@ -10,11 +10,21 @@
 [![The latest version can be found on PyPI.](https://img.shields.io/pypi/v/lsrenovate.svg)](https://pypi.org/project/lsrenovate/)
 [![Information on what versions of Python are supported can be found on PyPI.](https://img.shields.io/pypi/pyversions/lsrenovate.svg)](https://pypi.org/project/lsrenovate/)
 
-lsrenovate is a terminal UI for triaging open Renovate pull requests across many GitHub repositories at once. It reads a simple YAML project registry, fetches matching PRs concurrently via the `gh` CLI, and lets you review, merge, and jump into repos without leaving the terminal.
+lsrenovate is a terminal UI for triaging open Renovate pull requests across many GitHub, GitLab, and Gitea repositories at once. It reads a simple YAML project registry, fetches matching PRs/MRs concurrently, and lets you review, merge, and jump into repos without leaving the terminal.
+
+## Columns
+
+The table shows two independent signals per PR/MR, color-coded where the forge can tell reliably:
+
+- **Mergeable** — whether the forge sees a merge conflict or unmet approval rule (e.g. `MERGEABLE`/`CONFLICTING`). This does not reflect CI outcome.
+- **Pipeline** — the CI/pipeline outcome for the PR's head commit (e.g. `success`/`failed`/`running`, or `N/A` if the repo has no CI). For GitLab and Gitea this requires a follow-up API call per PR to fetch, since the list endpoints don't expose it directly.
+
+A PR is only color-coded ready when both are favorable; see the Gitea note below for where this can't be determined with full confidence.
 
 ## Features
 
-- **Cross-repo overview** — one table showing every open Renovate (or custom-labeled) PR across all your GitHub repos, with age, mergeable state, and merge readiness color-coded at a glance.
+- **Cross-repo overview** — one table showing every open Renovate (or custom-labeled) PR/MR across all your repos, with age, mergeable state, and pipeline status color-coded at a glance (where the forge can tell reliably — see the Gitea note below).
+- **Multi-forge, multi-instance** — mix GitHub, GitLab, and Gitea repos in one registry, including multiple self-hosted GitLab or Gitea instances at once, each with its own credentials.
 - **Multi-select merge** — tick PRs with `space` and merge them all with `m`; failures don't block the rest, and you get a summary afterward.
 - **Jump to context** — open a PR in your browser (`o`) or drop into a shell at its local checkout (`s`), with your GitHub token already exported into the shell environment.
 - **Configurable** — merge method, detection labels, sort order, and the project registry path are all overridable via a TOML config file.
@@ -23,7 +33,10 @@ lsrenovate is a terminal UI for triaging open Renovate pull requests across many
 ## Requirements
 
 - Python 3.12+
-- [GitHub CLI (`gh`)](https://cli.github.com/), authenticated or provided a token via config/env (see below)
+- One CLI per forge you actually use:
+  - [GitHub CLI (`gh`)](https://cli.github.com/), authenticated or provided a token via config/env (see below)
+  - [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli), no pre-login required — lsrenovate injects the token per call (see below)
+  - [Gitea CLI (`tea`)](https://gitea.com/gitea/tea), **must be pre-authenticated yourself** via `tea login add` (see the Gitea note below)
 
 ## Installation
 
@@ -51,14 +64,22 @@ uv sync --no-dev
        my-tool:
          forge: github
          url: https://github.com/myuser/my-tool
+     work:
+       internal-service:
+         forge: gitlab
+         url: https://gitlab.example.com/team/internal-service
+     personal:
+       my-blog:
+         forge: gitea
+         url: https://gitea.example.com/myuser/my-blog
    ```
 
-   Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. Only entries with `forge: github` are used.
+   Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. `forge` must be `github`, `gitlab`, or `gitea`.
 
 2. **Provide a GitHub token**, in order of precedence:
    - `GITHUB_TOKEN` environment variable, or
-   - `github_token_command` in the config file — a command that prints the token to stdout, e.g. a password manager CLI, or
-   - `github_token` in the config file (plaintext), or
+   - `[github].token_command` in the config file — a command that prints the token to stdout, e.g. a password manager CLI, or
+   - `[github].token` in the config file (plaintext), or
    - fall back to `gh`'s own stored authentication.
 
 3. **Run it:**
@@ -72,15 +93,49 @@ uv sync --no-dev
 lsrenovate reads an optional TOML config file at your platform's user config directory (e.g. `~/Library/Application Support/lsrenovate/config.toml` on macOS, `~/.config/lsrenovate/config.toml` on Linux):
 
 ```toml
-github_token = "ghp_..."               # optional; env var GITHUB_TOKEN takes precedence
-github_token_command = ["kpxc_get_password", "cli://token-gh-cli"]  # optional; takes precedence over github_token
 merge_method = "squash"                # "squash" (default), "merge", or "rebase"
-labels = ["Renovate"]                  # PR label(s) to filter on; all must match
+labels = ["Renovate"]                  # default PR label(s) to filter on; all must match
 sort_by = "repo"                       # "repo" (default), "age", or "title"
 myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this config
+
+[github]
+token = "ghp_..."                      # optional; env var GITHUB_TOKEN takes precedence
+token_command = ["kpxc_get_password", "cli://token-gh-cli"]  # optional; takes precedence over token
+# labels = ["Renovate"]                # optional; overrides the global `labels` for GitHub only
+
+# One [gitlab."<host>"] table per self-hosted GitLab instance you use.
+# <host> must match the hostname in the repo's url in myprojects.yaml.
+[gitlab."gitlab.example.com"]
+token = "glpat-..."                    # optional; or use token_command like above
+# token_command = ["kpxc_get_password", "cli://token-gitlab-example"]
+# api_host = "ssh.gitlab.example.com"   # optional; only needed if `glab auth status`
+                                        # shows your token stored under a different
+                                        # hostname than the one in your repo URLs
+                                        # (e.g. glab auth login ran against an SSH host)
+# labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
+
+# One [gitea."<host>"] table per Gitea instance you use. lsrenovate never
+# handles Gitea tokens itself — see the note below.
+[gitea."gitea.example.com"]
+login = "gitea.example.com"            # optional; defaults to the host itself
+# labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
 ```
 
-`github_token_command` is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If the command fails, lsrenovate falls back to `github_token` (or `gh`'s own auth) and shows a warning on startup.
+`token_command` (under `[github]` or any `[gitlab."<host>"]` table) is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If it fails, lsrenovate falls back to the plaintext `token` (or, for GitHub, `gh`'s own auth) and shows a warning on startup.
+
+Renovate (and similar bots) don't always use the same label across every forge — for example, GitHub/GitLab repos might use `Renovate` while Gitea repos use `dependencies`. Set `labels` at the top level for the default used everywhere, and override it per forge (`[github]`) or per instance (`[gitlab."<host>"]`, `[gitea."<host>"]`) wherever it differs. Multiple labels are always matched with AND semantics — a PR must carry every configured label, not just one.
+
+### Gitea limitation: no token management
+
+The `tea` CLI has no way to pass a token or host per invocation — it only works against named logins that are registered ahead of time. lsrenovate does not manage Gitea credentials at all: before using a Gitea instance, register it yourself with:
+
+```sh
+tea login add --name gitea.example.com --url https://gitea.example.com --token <your-token>
+```
+
+The `login` field in `[gitea."<host>"]` just tells lsrenovate which registered login name to pass to `tea --login`; it defaults to the host itself, which matches the convention of naming logins after their host.
+
+Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https://github.com/go-gitea/gitea/issues/19755) — it can report `false` for a PR that's actually mergeable. lsrenovate still color-codes it, though: attempting to merge a PR that turns out to have a real conflict fails cleanly with an error rather than silently doing anything harmful, so a wrong "mergeable" signal only costs you one failed merge attempt, not a bad merge. Pipeline/CI status is fetched separately via the Gitea API's combined commit status endpoint (one follow-up call per PR) and factors into the same color, alongside `mergeable`.
 
 ## Keybindings
 

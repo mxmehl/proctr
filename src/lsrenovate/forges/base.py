@@ -22,7 +22,16 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PullRequest:
-    """A single open Renovate pull request."""
+    """A single open Renovate pull request.
+
+    `mergeable` is a raw, forge-specific conflict/approval status string.
+    `pipeline_status` is the CI/pipeline outcome for the head commit (also
+    forge-specific, e.g. "success"/"failed", or "N/A" if unavailable).
+    Both are kept for display. `merge_ready` is the normalized signal used
+    for coloring: True/False when the forge can tell us definitively, None
+    when it can't (e.g. Gitea's `mergeable` flag is known to be unreliable
+    upstream, so it never contributes a positive True there).
+    """
 
     repo: Repo
     number: int
@@ -31,7 +40,8 @@ class PullRequest:
     created_at: datetime
     updated_at: datetime
     mergeable: str
-    merge_state_status: str
+    pipeline_status: str
+    merge_ready: bool | None = None
 
 
 @dataclass(frozen=True)

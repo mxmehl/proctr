@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 DEFAULT_LABELS = ("Renovate",)
 LIST_FIELDS = "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus"
 GH_EXECUTABLE = shutil.which("gh") or "gh"
+READY_MERGEABLE = "MERGEABLE"
+READY_MERGE_STATE = "CLEAN"
 
 
 class GitHubForge(Forge):
@@ -65,7 +67,11 @@ class GitHubForge(Forge):
                 created_at=datetime.fromisoformat(pr["createdAt"]),
                 updated_at=datetime.fromisoformat(pr["updatedAt"]),
                 mergeable=pr["mergeable"],
-                merge_state_status=pr["mergeStateStatus"],
+                pipeline_status=pr["mergeStateStatus"],
+                merge_ready=(
+                    pr["mergeable"] == READY_MERGEABLE
+                    and pr["mergeStateStatus"] == READY_MERGE_STATE
+                ),
             )
             for pr in raw_prs
         ]

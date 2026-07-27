@@ -22,20 +22,21 @@ if TYPE_CHECKING:
 
 from lsrenovate.config import load_config
 from lsrenovate.fetch import fetch_all_prs
+from lsrenovate.forges.gitea import GiteaForge
 from lsrenovate.forges.github import GitHubForge
+from lsrenovate.forges.gitlab import GitLabForge
 from lsrenovate.projects import load_repos
 
 if TYPE_CHECKING:
     from lsrenovate.config import Config
     from lsrenovate.fetch import FetchResult
-    from lsrenovate.forges.base import MergeResult, PullRequest
+    from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+    from lsrenovate.projects import Repo
 
-COLUMNS = ("Sel", "Repo", "Title", "Age", "Merge state", "Mergeable", "PR")
+COLUMNS = ("Sel", "Repo", "Title", "Age", "Pipeline", "Mergeable", "PR")
 CHECKED = "[X]"
 UNCHECKED = "[ ]"
 TITLE_MAX_LEN = 40
-READY_MERGEABLE = "MERGEABLE"
-READY_MERGE_STATE = "CLEAN"
 
 SORT_KEYS: dict[str, tuple[str, ...]] = {
     "repo": ("repo", "created_at"),
@@ -77,14 +78,29 @@ def _pr_key(pr: PullRequest) -> str:
     return f"{pr.repo.full_name}#{pr.number}"
 
 
-def _is_ready_to_merge(pr: PullRequest) -> bool:
-    """Return whether a PR's mergeable/merge state indicate it's ready to merge."""
-    return pr.mergeable == READY_MERGEABLE and pr.merge_state_status == READY_MERGE_STATE
+PIPELINE_SUCCESS_VALUES = {"CLEAN", "success"}
+PIPELINE_FAILURE_VALUES = {"UNSTABLE", "failed", "canceled", "skipped", "error", "failure"}
 
 
-def _status_cell(value: str, *, ready: bool) -> Text:
-    """Render a status value in green if ready to merge, red otherwise."""
+def _status_cell(value: str, *, ready: bool | None) -> Text:
+    """Render a status value in green if ready to merge, red if not, plain if unknown."""
+    if ready is None:
+        return Text(value)
     return Text(value, style="bold green" if ready else "bold red")
+
+
+def _pipeline_cell(value: str) -> Text:
+    """Render the Pipeline cell from the raw status text alone, independent of merge_ready.
+
+    Unlike Mergeable, pipeline/CI outcome is reliable on every forge (even
+    Gitea, via its combined commit status), so it's colored on its own
+    merits rather than gated behind merge_ready.
+    """
+    if value in PIPELINE_SUCCESS_VALUES:
+        return Text(value, style="bold green")
+    if value in PIPELINE_FAILURE_VALUES:
+        return Text(value, style="bold red")
+    return Text(value)
 
 
 def build_merge_summary(results: list[MergeResult]) -> str:
@@ -96,8 +112,56 @@ def build_merge_summary(results: list[MergeResult]) -> str:
     return "\n".join(lines)
 
 
+class ForgeDispatcher:
+    """Resolves the right Forge adapter for a repo, based on repo.forge and repo.host.
+
+    Instances are built lazily and cached by (forge, host), so each
+    configured GitLab/Gitea instance only gets one adapter regardless of
+    how many repos use it. Raises for repos whose host has no matching
+    configuration (e.g. a GitLab host with no [gitlab."<host>"] table) —
+    fetch_all_prs treats that the same as any other per-repo failure.
+    """
+
+    def __init__(self, config: Config) -> None:
+        """Initialize with the resolved app config; instances are built on demand."""
+        self._config = config
+        self._cache: dict[tuple[str, str], Forge] = {}
+
+    def __call__(self, repo: Repo) -> Forge:
+        """Return the Forge adapter to use for the given repo."""
+        cache_key = (repo.forge, repo.host)
+        if cache_key not in self._cache:
+            self._cache[cache_key] = self._build(repo)
+        return self._cache[cache_key]
+
+    def _build(self, repo: Repo) -> Forge:
+        if repo.forge == "github":
+            github = self._config.github
+            return GitHubForge(
+                github_token=github.token, labels=github.labels or self._config.labels
+            )
+        if repo.forge == "gitlab":
+            instance = self._config.gitlab_instances.get(repo.host)
+            if instance is None:
+                msg = f'No [gitlab."{repo.host}"] configuration found for this host'
+                raise ValueError(msg)
+            return GitLabForge(
+                host=instance.api_host or repo.host,
+                token=instance.token,
+                labels=instance.labels or self._config.labels,
+            )
+        if repo.forge == "gitea":
+            instance = self._config.gitea_instances.get(repo.host)
+            if instance is None:
+                msg = f'No [gitea."{repo.host}"] configuration found for this host'
+                raise ValueError(msg)
+            return GiteaForge(login=instance.login, labels=instance.labels or self._config.labels)
+        msg = f"Unsupported forge '{repo.forge}' for {repo.full_name}"
+        raise ValueError(msg)
+
+
 class LsRenovateApp(App[None]):
-    """Lists open Renovate PRs across all configured GitHub repos."""
+    """Lists open Renovate PRs across all configured GitHub, GitLab, and Gitea repos."""
 
     TITLE = "lsrenovate"
     BINDINGS: ClassVar = [
@@ -111,10 +175,10 @@ class LsRenovateApp(App[None]):
     ]
 
     def __init__(self, config: Config | None = None) -> None:
-        """Initialize the app, resolving configuration and the GitHub forge adapter."""
+        """Initialize the app, resolving configuration and the forge dispatcher."""
         super().__init__()
         self.config = config or load_config()
-        self.forge = GitHubForge(github_token=self.config.github_token, labels=self.config.labels)
+        self.resolve_forge = ForgeDispatcher(self.config)
         self.pull_requests: list[PullRequest] = []
         self.selected: set[str] = set()
         self._sel_column_key: ColumnKey | None = None  # set in on_mount
@@ -129,8 +193,8 @@ class LsRenovateApp(App[None]):
 
     def on_mount(self) -> None:
         """Set up the table columns and trigger the initial PR fetch."""
-        if self.config.token_command_error:
-            self.notify(self.config.token_command_error, severity="warning", timeout=10)
+        if self.config.github.token_command_error:
+            self.notify(self.config.github.token_command_error, severity="warning", timeout=10)
         table = self.query_one(DataTable)
         column_keys = table.add_columns(*COLUMNS)
         self._sel_column_key = column_keys[COLUMNS.index("Sel")]
@@ -160,8 +224,8 @@ class LsRenovateApp(App[None]):
         self.notify(f"Sorted by {self.sort_by}", timeout=2)
 
     async def _fetch_and_populate(self) -> None:
-        repos = load_repos(self.config.myprojects_path, forge="github")
-        result: FetchResult = await asyncio.to_thread(fetch_all_prs, repos, self.forge)
+        repos = load_repos(self.config.myprojects_path)
+        result: FetchResult = await asyncio.to_thread(fetch_all_prs, repos, self.resolve_forge)
         self._populate_table(result)
 
     def _populate_table(self, result: FetchResult) -> None:
@@ -188,14 +252,13 @@ class LsRenovateApp(App[None]):
         table.clear()
         for pr in ordered:
             key = _pr_key(pr)
-            ready = _is_ready_to_merge(pr)
             table.add_row(
                 CHECKED if key in self.selected else UNCHECKED,
                 pr.repo.full_name,
                 _truncate(pr.title),
                 _format_age(pr.created_at),
-                _status_cell(pr.merge_state_status, ready=ready),
-                _status_cell(pr.mergeable, ready=ready),
+                _pipeline_cell(pr.pipeline_status),
+                _status_cell(pr.mergeable, ready=pr.merge_ready),
                 str(pr.number),
                 key=key,
             )
@@ -252,7 +315,8 @@ class LsRenovateApp(App[None]):
         method = self.config.merge_method
         results: list[MergeResult] = []
         for pr in prs:
-            result = await asyncio.to_thread(self.forge.merge_pr, pr, method=method)
+            forge = self.resolve_forge(pr.repo)
+            result = await asyncio.to_thread(forge.merge_pr, pr, method=method)
             results.append(result)
 
         summary = build_merge_summary(results)
@@ -289,8 +353,8 @@ class LsRenovateApp(App[None]):
 
         shell = os.environ.get("SHELL", "/bin/sh")
         env = dict(os.environ)
-        if self.config.github_token:
-            env["GITHUB_TOKEN"] = self.config.github_token
+        if self.config.github.token:
+            env["GITHUB_TOKEN"] = self.config.github.token
         with self.suspend():
             subprocess.run([shell], cwd=local_path, env=env, check=False)  # noqa: S603
 

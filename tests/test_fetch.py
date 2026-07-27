@@ -42,7 +42,7 @@ class FakeForge(Forge):
                 created_at=datetime(2026, 7, 1),
                 updated_at=datetime(2026, 7, 1),
                 mergeable="MERGEABLE",
-                merge_state_status="CLEAN",
+                pipeline_status="CLEAN",
             )
         ]
 
@@ -56,7 +56,7 @@ def test_fetch_all_prs_aggregates_and_isolates_failures() -> None:
     repos = [_repo("repo-a"), _repo("repo-b"), _repo("repo-c")]
     forge = FakeForge(failing_repo_name="repo-b")
 
-    result = fetch_all_prs(repos, forge)
+    result = fetch_all_prs(repos, lambda _repo: forge)
 
     assert len(result.pull_requests) == 2
     assert {pr.repo.name for pr in result.pull_requests} == {"repo-a", "repo-c"}
@@ -64,3 +64,23 @@ def test_fetch_all_prs_aggregates_and_isolates_failures() -> None:
     assert len(result.errors) == 1
     assert result.errors[0].repo.name == "repo-b"
     assert "simulated gh failure" in result.errors[0].error
+
+
+def test_fetch_all_prs_isolates_resolver_failures() -> None:
+    """A repo whose forge can't be resolved (e.g. missing config) fails gracefully too."""
+    repos = [_repo("repo-a"), _repo("repo-b")]
+    forge = FakeForge(failing_repo_name="")
+
+    def resolve_forge(repo: Repo) -> Forge:
+        if repo.name == "repo-b":
+            msg = "no credentials configured"
+            raise ValueError(msg)
+        return forge
+
+    result = fetch_all_prs(repos, resolve_forge)
+
+    assert len(result.pull_requests) == 1
+    assert result.pull_requests[0].repo.name == "repo-a"
+    assert len(result.errors) == 1
+    assert result.errors[0].repo.name == "repo-b"
+    assert "no credentials configured" in result.errors[0].error

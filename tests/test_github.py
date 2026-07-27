@@ -47,7 +47,7 @@ def pull_request() -> PullRequest:
         created_at=datetime(2026, 7, 1),
         updated_at=datetime(2026, 7, 2),
         mergeable="MERGEABLE",
-        merge_state_status="CLEAN",
+        pipeline_status="CLEAN",
     )
 
 

@@ -6,7 +6,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from lsrenovate.app import build_merge_summary
+from lsrenovate.app import _pipeline_cell, build_merge_summary
 from lsrenovate.forges.base import MergeResult, PullRequest
 from lsrenovate.projects import Repo
 
@@ -29,7 +29,7 @@ def _pr(number: int) -> PullRequest:
         created_at=datetime(2026, 7, 1),
         updated_at=datetime(2026, 7, 2),
         mergeable="MERGEABLE",
-        merge_state_status="CLEAN",
+        pipeline_status="CLEAN",
     )
 
 
@@ -63,3 +63,21 @@ def test_build_merge_summary_all_failed() -> None:
     summary = build_merge_summary(results)
     assert "Merged 0/1 PR(s)." in summary
     assert "FAILED mxmehl/my-tool#1: already merged" in summary
+
+
+def test_pipeline_cell_green_for_success_across_forges() -> None:
+    """GitHub's CLEAN and GitLab/Gitea's success both render green."""
+    for value in ("CLEAN", "success"):
+        assert str(_pipeline_cell(value).style) == "bold green"
+
+
+def test_pipeline_cell_red_for_failure_across_forges() -> None:
+    """Every forge's failing status value renders red, independent of merge_ready."""
+    for value in ("UNSTABLE", "failed", "canceled", "skipped", "error", "failure"):
+        assert str(_pipeline_cell(value).style) == "bold red"
+
+
+def test_pipeline_cell_plain_for_unknown_or_no_pipeline() -> None:
+    """Statuses that are neither a known success nor failure stay uncolored."""
+    for value in ("N/A", "running", "pending", "BLOCKED"):
+        assert str(_pipeline_cell(value).style) == ""

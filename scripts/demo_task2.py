@@ -28,7 +28,7 @@ def main() -> None:
             continue
         print(f"{repo.full_name}: {len(prs)} open Renovate PR(s)")
         for pr in prs:
-            state = pr.merge_state_status
+            state = pr.pipeline_status
             print(f"  #{pr.number} {pr.title!r} mergeable={pr.mergeable} state={state}")
 
 

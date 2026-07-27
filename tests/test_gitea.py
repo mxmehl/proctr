@@ -1,0 +1,198 @@
+"""Tests for the Gitea forge adapter."""
+
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
+import json
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from lsrenovate.forges.base import PullRequest
+from lsrenovate.forges.gitea import GiteaForge
+from lsrenovate.projects import Repo
+
+REPO = Repo(
+    group="src.mehl.mx",
+    name="vpn-server",
+    forge="gitea",
+    url="https://git.fsfe.org/fsfe-system-hackers/vpn-server",
+    owner="fsfe-system-hackers",
+    local_path=Path("~/Git/src.mehl.mx/vpn-server").expanduser(),
+)
+
+# Real shape captured live from `tea pr list -o json --fields
+# index,title,state,author,updated,labels,mergeable` against git.fsfe.org.
+FAKE_PR_JSON = [
+    {
+        "index": "427",
+        "title": "Update postgres Docker tag to v18",
+        "url": "https://git.fsfe.org/fsfe-system-hackers/vpn-server/pulls/427",
+        "created": "2026-02-20T00:11:04Z",
+        "updated": "2026-02-28T00:11:04Z",
+        "labels": "maintenance,Renovate",
+        "mergeable": "false",
+        "head": "renovate/postgres-18.x",
+    },
+    {
+        "index": "285",
+        "title": "handle quoted selectors",
+        "url": "https://git.fsfe.org/fsfe-system-hackers/vpn-server/pulls/285",
+        "created": "2024-01-10T18:31:19Z",
+        "updated": "2024-01-15T18:31:19Z",
+        "labels": "",
+        "mergeable": "false",
+        "head": "quoted-selectors",
+    },
+]
+
+FAKE_STATUS_JSON = {"state": "success"}
+
+
+@pytest.fixture
+def pull_request() -> PullRequest:
+    """A single PullRequest fixture matching FAKE_PR_JSON's first (labeled) entry."""
+    return PullRequest(
+        repo=REPO,
+        number=427,
+        title="Update postgres Docker tag to v18",
+        url="https://git.fsfe.org/fsfe-system-hackers/vpn-server/pulls/427",
+        created_at=datetime(2026, 2, 20),
+        updated_at=datetime(2026, 2, 28),
+        mergeable="false",
+        pipeline_status="success",
+        merge_ready=None,
+    )
+
+
+def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
+    """Tea pulls list is invoked with --repo/--login/--fields, and JSON is parsed."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    with patch("subprocess.run", side_effect=[list_result, status_result]) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    cmd = mock_run.call_args_list[0].args[0]
+    assert Path(cmd[0]).name == "tea"
+    assert cmd[1:3] == ["pulls", "list"]
+    assert cmd[cmd.index("--repo") + 1] == "fsfe-system-hackers/vpn-server"
+    assert cmd[cmd.index("--login") + 1] == "git.fsfe.org"
+
+    # only the PR with the "Renovate" label survives client-side filtering
+    assert len(prs) == 1
+    assert prs[0].number == 427
+    assert prs[0].mergeable == "false"
+    assert prs[0].pipeline_status == "success"
+    assert prs[0].merge_ready is False  # mergeable=false is trusted as a real conflict signal
+
+    status_cmd = mock_run.call_args_list[1].args[0]
+    assert status_cmd[1] == "api"
+    assert (
+        status_cmd[2]
+        == "/repos/fsfe-system-hackers/vpn-server/commits/renovate/postgres-18.x/status"
+    )
+
+
+def test_merge_ready_is_true_when_mergeable_and_pipeline_passing() -> None:
+    """mergeable=true and a passing pipeline together mean merge_ready is True.
+
+    A wrong "mergeable" signal from Gitea only costs one failed merge
+    attempt (tea pulls merge fails cleanly on a real conflict), not a
+    silently bad merge, so it's safe to trust it here.
+    """
+    forge = GiteaForge(login="git.fsfe.org")
+    mergeable_pr = [{**FAKE_PR_JSON[0], "mergeable": "true"}]
+    list_result = MagicMock(stdout=json.dumps(mergeable_pr))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    with patch("subprocess.run", side_effect=[list_result, status_result]):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].merge_ready is True
+
+
+def test_merge_ready_is_false_when_not_mergeable() -> None:
+    """mergeable=false is not ready, even with a passing pipeline."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    with patch("subprocess.run", side_effect=[list_result, status_result]):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].merge_ready is False
+
+
+def test_merge_ready_is_false_when_pipeline_failed() -> None:
+    """A failing combined status is not ready, even if mergeable=true."""
+    forge = GiteaForge(login="git.fsfe.org")
+    mergeable_pr = [{**FAKE_PR_JSON[0], "mergeable": "true"}]
+    list_result = MagicMock(stdout=json.dumps(mergeable_pr))
+    status_result = MagicMock(returncode=0, stdout=json.dumps({"state": "failure"}))
+    with patch("subprocess.run", side_effect=[list_result, status_result]):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].pipeline_status == "failure"
+    assert prs[0].merge_ready is False
+
+
+def test_label_filtering_requires_all_configured_labels() -> None:
+    """A PR must carry all configured labels (AND semantics), not just one."""
+    forge = GiteaForge(login="git.fsfe.org", labels=["Renovate", "maintenance"])
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    with patch("subprocess.run", side_effect=[list_result, status_result]):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert len(prs) == 1
+    assert prs[0].number == 427
+
+
+def test_no_labels_configured_or_matching_returns_empty() -> None:
+    """A label with no matching PR returns an empty list, not an error."""
+    forge = GiteaForge(login="git.fsfe.org", labels=["nonexistent-label"])
+    fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    with patch("subprocess.run", return_value=fake_result):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs == []
+
+
+def test_merge_pr_success_uses_style_flag(pull_request: PullRequest) -> None:
+    """merge_method='squash' translates to tea's --style squash."""
+    forge = GiteaForge(login="git.fsfe.org")
+    fake_ok = MagicMock(returncode=0, stdout="Merged\n", stderr="")
+
+    with patch("subprocess.run", return_value=fake_ok) as mock_run:
+        merge_result = forge.merge_pr(pull_request, method="squash")
+
+    cmd = mock_run.call_args.args[0]
+    assert Path(cmd[0]).name == "tea"
+    assert cmd[1:3] == ["pulls", "merge"]
+    assert cmd[cmd.index("--style") + 1] == "squash"
+    assert merge_result.success is True
+
+
+def test_merge_pr_unknown_method_falls_back_to_merge_style(pull_request: PullRequest) -> None:
+    """An unrecognized merge_method value falls back to tea's default 'merge' style."""
+    forge = GiteaForge(login="git.fsfe.org")
+    fake_ok = MagicMock(returncode=0, stdout="Merged\n", stderr="")
+
+    with patch("subprocess.run", return_value=fake_ok) as mock_run:
+        forge.merge_pr(pull_request, method="bogus")
+
+    cmd = mock_run.call_args.args[0]
+    assert cmd[cmd.index("--style") + 1] == "merge"
+
+
+def test_merge_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
+    """A failing tea pulls merge invocation returns a failed MergeResult, not an exception."""
+    forge = GiteaForge(login="git.fsfe.org")
+    fake_fail = MagicMock(returncode=1, stdout="", stderr="merge conflict")
+
+    with patch("subprocess.run", return_value=fake_fail):
+        merge_result = forge.merge_pr(pull_request, method="squash")
+
+    assert merge_result.success is False
+    assert "merge conflict" in merge_result.message

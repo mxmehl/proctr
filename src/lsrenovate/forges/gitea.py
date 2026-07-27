@@ -1,0 +1,161 @@
+"""Gitea forge adapter backed by the `tea` CLI.
+
+lsrenovate never handles Gitea tokens: `tea` has no per-invocation
+token/host env var mechanism, only pre-registered named logins
+(`tea login add --name=X --url=Y --token=Z`), selected here via
+`--login <name>`. Users must register each Gitea instance themselves;
+see the README for details.
+
+`tea pulls list` has no server-side label filter, so labels are matched
+client-side against the comma-separated `labels` field (AND semantics,
+matching the other forge adapters' repeated-label behavior).
+
+Gitea's `mergeable` field is documented upstream as sometimes wrong
+(Gitea issue #19755: it can report false for a PR that's actually
+mergeable). It's still used to compute merge_ready, though: a merge
+attempt (`tea pulls merge`) never raises and reports failure cleanly if
+there really is a conflict, so a wrong "mergeable" signal only costs one
+failed merge attempt with a clear error, not a silently bad merge — the
+asymmetric risk that justifies distrusting a forge's signal (as with
+GitLab's pipeline status) doesn't apply here. Pipeline/CI status is
+fetched separately via `tea api .../commits/{ref}/status` (the combined
+commit status endpoint) and also feeds into merge_ready.
+"""
+
+# SPDX-License-Identifier: Apache-2.0
+# SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+
+if TYPE_CHECKING:
+    from lsrenovate.projects import Repo
+
+TEA_EXECUTABLE = shutil.which("tea") or "tea"
+LIST_FIELDS = "index,title,url,created,updated,labels,mergeable,head"
+MERGE_STYLES = {"squash", "merge", "rebase", "rebase-merge"}
+NO_PIPELINE = "N/A"
+FAILED_COMBINED_STATUSES = {"error", "failure"}
+
+
+class GiteaForge(Forge):
+    """Lists and merges PRs matching configured label(s) via the tea CLI."""
+
+    def __init__(self, login: str, labels: list[str] | None = None) -> None:
+        """Initialize with a pre-registered tea login name and label filter."""
+        self._login = login
+        self._labels = labels or ["Renovate"]
+
+    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+        """Return open PRs matching all configured labels via tea pulls list.
+
+        Label filtering happens client-side: tea has no --labels flag on
+        `pulls list`, so all open PRs are fetched and filtered locally
+        against the comma-separated `labels` field.
+        """
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "pulls",
+                "list",
+                "--repo",
+                repo.full_name,
+                "--login",
+                self._login,
+                "--fields",
+                LIST_FIELDS,
+                "--output",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        raw_prs = json.loads(result.stdout)
+        prs = []
+        for pr in raw_prs:
+            if not self._has_all_labels(pr.get("labels", "")):
+                continue
+            combined_status = self._combined_status(repo, pr["head"])
+            mergeable = pr["mergeable"]
+            prs.append(
+                PullRequest(
+                    repo=repo,
+                    number=int(pr["index"]),
+                    title=pr["title"],
+                    url=pr["url"],
+                    created_at=datetime.fromisoformat(pr["created"]),
+                    updated_at=datetime.fromisoformat(pr["updated"]),
+                    mergeable=mergeable,
+                    pipeline_status=combined_status or NO_PIPELINE,
+                    merge_ready=mergeable == "true"
+                    and combined_status not in FAILED_COMBINED_STATUSES,
+                )
+            )
+        return prs
+
+    def _has_all_labels(self, labels_field: str) -> bool:
+        pr_labels = {label.strip() for label in labels_field.split(",") if label.strip()}
+        return all(label in pr_labels for label in self._labels)
+
+    def _combined_status(self, repo: Repo, ref: str) -> str | None:
+        """Fetch the combined commit status for a PR's head ref via the Gitea API.
+
+        Returns None if there's no status at all (e.g. a repo without CI
+        configured), which is treated as "not blocking" by merge_ready.
+        """
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "api",
+                f"/repos/{repo.full_name}/commits/{ref}/status",
+                "--repo",
+                repo.full_name,
+                "--login",
+                self._login,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+        return data.get("state")
+
+    def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:
+        """Attempt to merge a single PR via tea pulls merge, never raising."""
+        style = method if method in MERGE_STYLES else "merge"
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "pulls",
+                "merge",
+                str(pull_request.number),
+                "--repo",
+                pull_request.repo.full_name,
+                "--login",
+                self._login,
+                "--style",
+                style,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return MergeResult(
+                pull_request=pull_request, success=True, message=result.stdout.strip()
+            )
+        message = result.stderr.strip() or result.stdout.strip() or "tea pulls merge failed"
+        return MergeResult(pull_request=pull_request, success=False, message=message)

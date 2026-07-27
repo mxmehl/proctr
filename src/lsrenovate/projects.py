@@ -1,8 +1,9 @@
 """Parsing of myprojects.yaml into Repo records.
 
-Local clone path convention: ~/Git/<group>/<project>, where <group> is the
-top-level key under `myprojects` in the YAML file (not derived from the
-repo URL's host).
+Local clone path convention: ~/Git/<group>/<project>, where <group> and
+<project> are the top-level/second-level keys under `myprojects` in the
+YAML file — these are a local naming convention and may differ from the
+repo's actual slug on the forge, which is always derived from the URL.
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -21,7 +22,13 @@ GIT_ROOT = Path("~/Git").expanduser()
 
 @dataclass(frozen=True)
 class Repo:
-    """A single repository entry derived from myprojects.yaml."""
+    """A single repository entry derived from myprojects.yaml.
+
+    `name` is the local key from myprojects.yaml (used only for
+    local_path); `owner` and the repo slug used in `full_name` are always
+    derived from the URL, since the local key is just a naming
+    convention and may not match the forge's actual project path.
+    """
 
     group: str
     name: str
@@ -32,20 +39,30 @@ class Repo:
 
     @property
     def full_name(self) -> str:
-        """Return the "owner/repo" identifier used by gh."""
-        return f"{self.owner}/{self.name}"
+        """Return the "owner/repo" (or GitLab "group/subgroup/.../repo") API identifier."""
+        return urlparse(self.url).path.strip("/")
+
+    @property
+    def host(self) -> str:
+        """Return the hostname of the repo's forge instance, e.g. 'gitlab.example.com'."""
+        return urlparse(self.url).hostname or ""
 
 
 def _owner_from_url(url: str) -> str:
-    """Extract the owner (first path segment) from a repo URL."""
+    """Extract the owner/namespace (all path segments except the repo name) from a URL.
+
+    For GitHub/Gitea this is a single segment (owner/repo). GitLab supports
+    arbitrarily nested subgroups (group/subgroup/.../repo), so the owner
+    must be everything up to the last segment, not just the first one.
+    """
     parts = urlparse(url).path.strip("/").split("/")
-    return parts[0] if parts else ""
+    return "/".join(parts[:-1]) if len(parts) > 1 else ""
 
 
-def load_repos(myprojects_path: Path, *, forge: str | None = "github") -> list[Repo]:
+def load_repos(myprojects_path: Path, *, forge: str | None = None) -> list[Repo]:
     """Load repos from myprojects.yaml, optionally filtered by forge.
 
-    Pass forge=None to return repos for all forges.
+    Pass forge=None (the default) to return repos for all forges.
     """
     data = yaml.safe_load(myprojects_path.read_text())
     groups = data.get("myprojects", {})

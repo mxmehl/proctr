@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from lsrenovate.forges.base import Forge, PullRequest
     from lsrenovate.projects import Repo
 
@@ -32,15 +34,31 @@ class FetchResult:
     errors: list[FetchError]
 
 
+def _fetch_one(repo: Repo, resolve_forge: Callable[[Repo], Forge]) -> list[PullRequest]:
+    """Resolve the right forge for a repo and fetch its PRs (may raise)."""
+    forge = resolve_forge(repo)
+    return forge.list_renovate_prs(repo)
+
+
 def fetch_all_prs(
-    repos: list[Repo], forge: Forge, *, max_workers: int = MAX_WORKERS
+    repos: list[Repo],
+    resolve_forge: Callable[[Repo], Forge],
+    *,
+    max_workers: int = MAX_WORKERS,
 ) -> FetchResult:
-    """Fetch Renovate PRs for all repos in parallel, isolating per-repo failures."""
+    """Fetch PRs for all repos in parallel, isolating per-repo failures.
+
+    resolve_forge maps each repo to the Forge adapter that should handle
+    it (e.g. by repo.forge + repo.host), so a single call can span
+    multiple forges and multiple instances of the same forge software.
+    Raising from resolve_forge (e.g. "no credentials configured for this
+    host") is treated the same as any other per-repo failure.
+    """
     pull_requests: list[PullRequest] = []
     errors: list[FetchError] = []
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_repo = {executor.submit(forge.list_renovate_prs, repo): repo for repo in repos}
+        future_to_repo = {executor.submit(_fetch_one, repo, resolve_forge): repo for repo in repos}
         for future in as_completed(future_to_repo):
             repo = future_to_repo[future]
             try:
