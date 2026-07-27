@@ -80,13 +80,23 @@ def _pr_key(pr: PullRequest) -> str:
 
 PIPELINE_SUCCESS_VALUES = {"CLEAN", "success"}
 PIPELINE_FAILURE_VALUES = {"UNSTABLE", "failed", "canceled", "skipped", "error", "failure"}
+MERGEABLE_VALUES = {"MERGEABLE", "true"}
+CONFLICTING_VALUES = {"CONFLICTING", "false"}
 
 
-def _status_cell(value: str, *, ready: bool | None) -> Text:
-    """Render a status value in green if ready to merge, red if not, plain if unknown."""
-    if ready is None:
-        return Text(value)
-    return Text(value, style="bold green" if ready else "bold red")
+def _mergeable_cell(value: str) -> Text:
+    """Render the Mergeable cell from the raw conflict/approval text alone.
+
+    This must stay independent of pipeline/CI outcome (merge_ready mixes
+    both), or a failing pipeline on an otherwise-conflict-free PR would
+    wrongly paint "MERGEABLE" red — the exact bug this column exists to
+    avoid repeating with a different signal.
+    """
+    if value in MERGEABLE_VALUES:
+        return Text(value, style="bold green")
+    if value in CONFLICTING_VALUES:
+        return Text(value, style="bold red")
+    return Text(value)
 
 
 def _pipeline_cell(value: str) -> Text:
@@ -258,7 +268,7 @@ class LsRenovateApp(App[None]):
                 _truncate(pr.title),
                 _format_age(pr.created_at),
                 _pipeline_cell(pr.pipeline_status),
-                _status_cell(pr.mergeable, ready=pr.merge_ready),
+                _mergeable_cell(pr.mergeable),
                 str(pr.number),
                 key=key,
             )
@@ -378,14 +388,38 @@ class LsRenovateApp(App[None]):
             self.notify(message or f"Checkout failed for {_pr_key(pr)}", severity="error")
 
         shell = os.environ.get("SHELL", "/bin/sh")
-        env = dict(os.environ)
-        if self.config.github.token:
-            env["GITHUB_TOKEN"] = self.config.github.token
+        env = self._shell_env()
         with self.suspend():
             # ASYNC221: intentional — suspend() hands the whole terminal to
             # the interactive shell, so blocking here (rather than in a
             # thread) is correct; the app is paused until the shell exits.
-            subprocess.run([shell], cwd=pr.repo.local_path, env=env, check=False)  # noqa: S603, ASYNC221
+            # -l: run as a login shell so it re-sources its own startup
+            # files (mise/asdf hooks, PATH setup, etc.) instead of just
+            # inheriting whatever this process happened to have.
+            subprocess.run([shell, "-l"], cwd=pr.repo.local_path, env=env, check=False)  # noqa: S603, ASYNC221
+
+    def _shell_env(self) -> dict[str, str]:
+        """Build the env for the spawned shell so it starts like a fresh terminal session.
+
+        lsrenovate normally runs via `uv run`, which pollutes the current
+        process's env with its own venv/PATH state (VIRTUAL_ENV, a session
+        marker from `uv`'s own tool-version manager, and a mutated PATH
+        with lsrenovate's own .venv/bin prepended). Passed straight through,
+        that state leaks into an unrelated project's shell and confuses its
+        own tools (e.g. `uv` warns about a mismatched VIRTUAL_ENV). Resetting
+        PATH to a plain OS bootstrap and dropping uv/mise's session markers
+        lets the login shell's own startup files (mise/asdf hooks, etc.)
+        rebuild PATH from scratch, the same as a brand new terminal window —
+        everything else (SSH_AUTH_SOCK, TERM, HOME, ...) is inherited as-is
+        since only the OS/terminal session provides those, not shell startup.
+        """
+        env = dict(os.environ)
+        for key in ("VIRTUAL_ENV", "UV_RUN_RECURSION_DEPTH", "__MISE_DIFF", "__MISE_ORIG_PATH"):
+            env.pop(key, None)
+        env["PATH"] = os.defpath
+        if self.config.github.token:
+            env["GITHUB_TOKEN"] = self.config.github.token
+        return env
 
 
 def main() -> None:

@@ -6,7 +6,7 @@
 from datetime import datetime
 from pathlib import Path
 
-from lsrenovate.app import _pipeline_cell, build_merge_summary
+from lsrenovate.app import _mergeable_cell, _pipeline_cell, build_merge_summary
 from lsrenovate.forges.base import MergeResult, PullRequest
 from lsrenovate.projects import Repo
 
@@ -75,6 +75,32 @@ def test_pipeline_cell_red_for_failure_across_forges() -> None:
     """Every forge's failing status value renders red, independent of merge_ready."""
     for value in ("UNSTABLE", "failed", "canceled", "skipped", "error", "failure"):
         assert str(_pipeline_cell(value).style) == "bold red"
+
+
+def test_mergeable_cell_green_for_mergeable_across_forges() -> None:
+    """GitHub/GitLab's MERGEABLE and Gitea's 'true' both render green."""
+    for value in ("MERGEABLE", "true"):
+        assert str(_mergeable_cell(value).style) == "bold green"
+
+
+def test_mergeable_cell_red_for_conflicting_across_forges() -> None:
+    """GitHub/GitLab's CONFLICTING and Gitea's 'false' both render red."""
+    for value in ("CONFLICTING", "false"):
+        assert str(_mergeable_cell(value).style) == "bold red"
+
+
+def test_mergeable_cell_independent_of_pipeline_status() -> None:
+    """Regression test: a failing pipeline must not paint an otherwise-mergeable PR red.
+
+    Mergeable and Pipeline are independent signals — this was the exact
+    bug that started the column redesign (a GitLab MR silently shown as
+    mergeable despite a failed pipeline) and it resurfaced in reverse:
+    GitHub's merge_ready (which factors in mergeStateStatus) used to gate
+    this cell's color, so an UNSTABLE pipeline wrongly painted a genuinely
+    conflict-free "MERGEABLE" PR red.
+    """
+    assert str(_mergeable_cell("MERGEABLE").style) == "bold green"
+    assert str(_pipeline_cell("UNSTABLE").style) == "bold red"
 
 
 def test_pipeline_cell_plain_for_unknown_or_no_pipeline() -> None:
