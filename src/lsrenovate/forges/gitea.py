@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from lsrenovate.projects import Repo
 
 TEA_EXECUTABLE = shutil.which("tea") or "tea"
+GIT_EXECUTABLE = shutil.which("git") or "git"
 LIST_FIELDS = "index,title,url,created,updated,labels,mergeable,head"
 MERGE_STYLES = {"squash", "merge", "rebase", "rebase-merge"}
 NO_PIPELINE = "N/A"
@@ -159,3 +160,84 @@ class GiteaForge(Forge):
             )
         message = result.stderr.strip() or result.stdout.strip() or "tea pulls merge failed"
         return MergeResult(pull_request=pull_request, success=False, message=message)
+
+    def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
+        """Check out a PR's branch, force-resetting it to the current remote state.
+
+        `tea pulls checkout` fetches the PR's head ref and checks it out
+        detached, deliberately bypassing any stale local branch of the
+        same name rather than trusting it — safe, but not push-ready. A
+        follow-up `git checkout -B <branch> origin/<branch>` puts you on a
+        real local branch reset to that same fresh commit, matching the
+        end state of the GitHub/GitLab checkout actions.
+        """
+        head_branch = self._head_branch(pull_request.repo, pull_request.number)
+        if head_branch is None:
+            return False, f"Could not resolve head branch for PR #{pull_request.number}"
+
+        checkout_result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "pulls",
+                "checkout",
+                str(pull_request.number),
+                "--repo",
+                pull_request.repo.full_name,
+                "--login",
+                self._login,
+            ],
+            cwd=pull_request.repo.local_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if checkout_result.returncode != 0:
+            message = (
+                checkout_result.stderr.strip()
+                or checkout_result.stdout.strip()
+                or "tea pulls checkout failed"
+            )
+            return False, message
+
+        branch_result = subprocess.run(  # noqa: S603
+            [GIT_EXECUTABLE, "checkout", "-B", head_branch, f"origin/{head_branch}"],
+            cwd=pull_request.repo.local_path,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if branch_result.returncode == 0:
+            return True, branch_result.stderr.strip() or branch_result.stdout.strip()
+        message = (
+            branch_result.stderr.strip() or branch_result.stdout.strip() or "git checkout -B failed"
+        )
+        return False, message
+
+    def _head_branch(self, repo: Repo, index: int) -> str | None:
+        """Resolve the head branch name for a single PR via tea pulls list."""
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "pulls",
+                "list",
+                "--repo",
+                repo.full_name,
+                "--login",
+                self._login,
+                "--fields",
+                "index,head",
+                "--output",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return None
+        pr = next((p for p in data if int(p["index"]) == index), None)
+        return pr["head"] if pr else None

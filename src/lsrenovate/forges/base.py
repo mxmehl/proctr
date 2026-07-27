@@ -63,3 +63,12 @@ class Forge(ABC):
     @abstractmethod
     def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:
         """Attempt to merge a single PR, never raising on failure."""
+
+    @abstractmethod
+    def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
+        """Check out a PR's branch locally, force-resetting it to the current remote state.
+
+        Renovate reuses branch names across unrelated updates, so a stale
+        local branch from a previous PR run must never be trusted as-is.
+        Returns (success, message); never raises.
+        """

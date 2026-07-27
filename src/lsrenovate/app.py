@@ -168,7 +168,7 @@ class LsRenovateApp(App[None]):
         ("r", "refresh_prs", "Refresh"),
         ("space", "toggle_selection", "Select"),
         ("o", "open_browser", "Open in browser"),
-        ("s", "open_shell", "Open shell"),
+        ("s", "open_shell", "Checkout + shell"),
         ("t", "cycle_sort", "Sort"),
         ("m", "merge_selected", "Merge"),
         ("q", "quit", "Quit"),
@@ -326,23 +326,33 @@ class LsRenovateApp(App[None]):
         self.selected.clear()
         await self._fetch_and_populate()
 
+    def _focused_pr(self) -> PullRequest | None:
+        """Return the PR under the cursor, or None (with a warning notification) if none."""
+        table = self.query_one(DataTable)
+        if table.row_count == 0:
+            self.notify("No PR focused", severity="warning")
+            return None
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        return self._pr_for_key(str(row_key.value))
+
     def action_open_shell(self) -> None:
-        """Suspend the TUI and open a shell at the focused PR's local repo path.
+        """Check out the focused PR's branch, then suspend and open a shell there.
 
         Always acts on the row under the cursor, ignoring multi-selection —
-        opening one shell per selected repo doesn't make sense here.
+        one shell per selected repo doesn't make sense here. Checkout
+        force-resets any stale local branch (Renovate reuses branch names
+        across unrelated updates), so the shell usually lands on the PR's
+        current state, ready to edit and push. If checkout fails (e.g. a
+        dirty working tree git refuses to overwrite), the shell still
+        opens with the error shown first, so you can resolve it right
+        there instead of hunting down the local path yourself.
 
         ponytail: App.suspend() + exec of an interactive shell can't be
         meaningfully exercised under Textual's headless test harness (no
         real TTY to hand off). Verified via mocked subprocess.run/suspend
         (correct cwd/env) plus manual interactive confirmation.
         """
-        table = self.query_one(DataTable)
-        if table.row_count == 0:
-            self.notify("No PR focused", severity="warning")
-            return
-        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
-        pr = self._pr_for_key(str(row_key.value))
+        pr = self._focused_pr()
         if pr is None:
             return
 
@@ -351,12 +361,31 @@ class LsRenovateApp(App[None]):
             self.notify(f"Local path does not exist: {local_path}", severity="error")
             return
 
+        self.run_worker(self._checkout_and_open_shell(pr), exclusive=True)
+
+    async def _checkout_and_open_shell(self, pr: PullRequest) -> None:
+        """Check out the PR's branch, then always open a shell at the repo, even on failure.
+
+        A failed checkout (e.g. a dirty working tree blocking the branch
+        switch) is exactly the situation you need a shell to resolve —
+        staying in the TUI would leave you no way to fix it without
+        finding the local path yourself, so the shell opens regardless
+        and the error is shown first so you know what to clean up.
+        """
+        forge = self.resolve_forge(pr.repo)
+        success, message = await asyncio.to_thread(forge.checkout_pr, pr)
+        if not success:
+            self.notify(message or f"Checkout failed for {_pr_key(pr)}", severity="error")
+
         shell = os.environ.get("SHELL", "/bin/sh")
         env = dict(os.environ)
         if self.config.github.token:
             env["GITHUB_TOKEN"] = self.config.github.token
         with self.suspend():
-            subprocess.run([shell], cwd=local_path, env=env, check=False)  # noqa: S603
+            # ASYNC221: intentional — suspend() hands the whole terminal to
+            # the interactive shell, so blocking here (rather than in a
+            # thread) is correct; the app is paused until the shell exits.
+            subprocess.run([shell], cwd=pr.repo.local_path, env=env, check=False)  # noqa: S603, ASYNC221
 
 
 def main() -> None:

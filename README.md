@@ -144,7 +144,7 @@ Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https:
 | `space` | Toggle selection of the row under the cursor            |
 | `m`     | Merge selected PRs (or the focused one if none selected) |
 | `o`     | Open selected PRs (or the focused one) in the browser   |
-| `s`     | Open a shell at the focused PR's local repo checkout    |
+| `s`     | Check out the focused PR's branch (force-resetting any stale branch) and open a shell there |
 | `t`     | Cycle sort order (repo → age → title)                   |
 | `r`     | Refresh the PR list                                     |
 | `q`     | Quit                                                    |

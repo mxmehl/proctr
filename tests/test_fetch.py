@@ -50,6 +50,10 @@ class FakeForge(Forge):
         """Not needed for these tests."""
         raise NotImplementedError
 
+    def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
+        """Not needed for these tests."""
+        raise NotImplementedError
+
 
 def test_fetch_all_prs_aggregates_and_isolates_failures() -> None:
     """A single failing repo's exception is captured as an error, not raised."""

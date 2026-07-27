@@ -151,3 +151,32 @@ class GitLabForge(Forge):
             )
         message = result.stderr.strip() or result.stdout.strip() or "glab mr merge failed"
         return MergeResult(pull_request=pull_request, success=False, message=message)
+
+    def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
+        """Check out an MR's branch via glab mr checkout -f, force-resetting any stale branch.
+
+        -f resets the local branch to the MR's current remote state even
+        if it has diverged (e.g. a reused Renovate branch name pointing at
+        an unrelated older commit) — without it, glab refuses with an
+        error rather than silently checking out stale content.
+        """
+        result = subprocess.run(  # noqa: S603
+            [
+                GLAB_EXECUTABLE,
+                "mr",
+                "checkout",
+                str(pull_request.number),
+                "-R",
+                pull_request.repo.full_name,
+                "-f",
+            ],
+            cwd=pull_request.repo.local_path,
+            capture_output=True,
+            text=True,
+            env=self._env(),
+            check=False,
+        )
+        if result.returncode == 0:
+            return True, result.stderr.strip() or result.stdout.strip()
+        message = result.stderr.strip() or result.stdout.strip() or "glab mr checkout failed"
+        return False, message

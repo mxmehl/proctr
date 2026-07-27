@@ -196,3 +196,57 @@ def test_merge_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
 
     assert merge_result.success is False
     assert "merge conflict" in merge_result.message
+
+
+def test_checkout_pr_resolves_branch_checks_out_and_rebranches(pull_request: PullRequest) -> None:
+    """checkout_pr resolves the head branch, runs tea checkout, then git checkout -B onto it.
+
+    tea pulls checkout leaves a detached HEAD (it deliberately bypasses
+    any stale local branch of the same name), so a follow-up git command
+    puts the user on a real, force-reset, push-ready branch.
+    """
+    forge = GiteaForge(login="git.fsfe.org")
+    head_lookup = MagicMock(returncode=0, stdout=json.dumps(FAKE_PR_JSON))
+    tea_checkout = MagicMock(returncode=0, stdout="Checked out\n", stderr="")
+    git_checkout = MagicMock(returncode=0, stdout="Switched to a new branch\n", stderr="")
+
+    with patch("subprocess.run", side_effect=[head_lookup, tea_checkout, git_checkout]) as mock_run:
+        success, _message = forge.checkout_pr(pull_request)
+
+    assert success is True
+    tea_cmd = mock_run.call_args_list[1].args[0]
+    assert Path(tea_cmd[0]).name == "tea"
+    assert tea_cmd[1:3] == ["pulls", "checkout"]
+    assert mock_run.call_args_list[1].kwargs["cwd"] == REPO.local_path
+
+    git_cmd = mock_run.call_args_list[2].args[0]
+    assert git_cmd[1:3] == ["checkout", "-B"]
+    assert git_cmd[3] == "renovate/postgres-18.x"
+    assert git_cmd[4] == "origin/renovate/postgres-18.x"
+    assert mock_run.call_args_list[2].kwargs["cwd"] == REPO.local_path
+
+
+def test_checkout_pr_fails_when_head_branch_unresolvable(pull_request: PullRequest) -> None:
+    """If the PR's head branch can't be resolved, checkout_pr fails cleanly, not raises."""
+    forge = GiteaForge(login="git.fsfe.org")
+    head_lookup = MagicMock(returncode=1, stdout="", stderr="not found")
+
+    with patch("subprocess.run", return_value=head_lookup):
+        success, message = forge.checkout_pr(pull_request)
+
+    assert success is False
+    assert "head branch" in message.lower()
+
+
+def test_checkout_pr_fails_when_tea_checkout_fails(pull_request: PullRequest) -> None:
+    """A failing tea pulls checkout call is reported, not raised, and git is never invoked."""
+    forge = GiteaForge(login="git.fsfe.org")
+    head_lookup = MagicMock(returncode=0, stdout=json.dumps(FAKE_PR_JSON))
+    tea_checkout = MagicMock(returncode=1, stdout="", stderr="network error")
+
+    with patch("subprocess.run", side_effect=[head_lookup, tea_checkout]) as mock_run:
+        success, message = forge.checkout_pr(pull_request)
+
+    assert success is False
+    assert "network error" in message
+    assert mock_run.call_count == 2  # git checkout -B is never reached

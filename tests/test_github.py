@@ -110,3 +110,33 @@ def test_merge_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
 
     assert merge_result.success is False
     assert "merge conflict" in merge_result.message
+
+
+def test_checkout_pr_uses_force_flag_and_repo_cwd(pull_request: PullRequest) -> None:
+    """Gh pr checkout is invoked with -f (force-reset stale branches) and cwd at the local repo."""
+    forge = GitHubForge(github_token=None)
+    fake_ok = MagicMock(returncode=0, stdout="Switched to branch\n", stderr="")
+
+    with patch("subprocess.run", return_value=fake_ok) as mock_run:
+        success, _message = forge.checkout_pr(pull_request)
+
+    args, kwargs = mock_run.call_args
+    cmd = args[0]
+    assert Path(cmd[0]).name == "gh"
+    assert cmd[1:3] == ["pr", "checkout"]
+    assert cmd[3] == "42"
+    assert "-f" in cmd
+    assert kwargs["cwd"] == REPO.local_path
+    assert success is True
+
+
+def test_checkout_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
+    """A failing gh pr checkout invocation returns (False, message), not an exception."""
+    forge = GitHubForge(github_token=None)
+    fake_fail = MagicMock(returncode=1, stdout="", stderr="branch has diverged")
+
+    with patch("subprocess.run", return_value=fake_fail):
+        success, message = forge.checkout_pr(pull_request)
+
+    assert success is False
+    assert "diverged" in message
