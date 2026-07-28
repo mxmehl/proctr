@@ -81,7 +81,8 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     assert cmd[cmd.index("--repo") + 1] == "fsfe-system-hackers/vpn-server"
     assert cmd[cmd.index("--login") + 1] == "git.fsfe.org"
 
-    # only the PR with the "Renovate" label survives client-side filtering
+    # with no labels/branch_prefixes configured, the default is branch-prefix
+    # matching (renovate/), so only the PR with a matching head branch survives
     assert len(prs) == 1
     assert prs[0].number == 427
     assert prs[0].mergeable == "false"

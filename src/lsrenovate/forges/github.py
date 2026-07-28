@@ -12,12 +12,17 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import Forge, MergeResult, PullRequest, branch_matches_prefixes
+from lsrenovate.forges.base import (
+    Forge,
+    MergeResult,
+    PullRequest,
+    branch_matches_prefixes,
+    resolve_filter_defaults,
+)
 
 if TYPE_CHECKING:
     from lsrenovate.projects import Repo
 
-DEFAULT_LABELS = ("Renovate",)
 LIST_FIELDS = "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus,headRefName"
 GH_EXECUTABLE = shutil.which("gh") or "gh"
 READY_MERGEABLE = "MERGEABLE"
@@ -36,8 +41,7 @@ class GitHubForge(Forge):
     ) -> None:
         """Initialize with an optional token and the label/branch-prefix filters."""
         self._github_token = github_token
-        self._labels = list(DEFAULT_LABELS) if labels is None else labels
-        self._branch_prefixes = branch_prefixes or []
+        self._labels, self._branch_prefixes = resolve_filter_defaults(labels, branch_prefixes)
         self._match_mode = match_mode
 
     def _env(self) -> dict[str, str]:

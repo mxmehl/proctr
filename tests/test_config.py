@@ -9,7 +9,7 @@ import jsonschema
 import pytest
 
 from lsrenovate.config import (
-    DEFAULT_LABELS,
+    DEFAULT_BRANCH_PREFIXES,
     DEFAULT_MATCH_MODE,
     DEFAULT_MERGE_METHOD,
     DEFAULT_SORT_BY,
@@ -39,8 +39,8 @@ def test_config_defaults_when_no_file_and_no_env(monkeypatch: pytest.MonkeyPatch
     assert cfg.github.token is None
     assert cfg.merge_method == DEFAULT_MERGE_METHOD
     assert cfg.sort_by == DEFAULT_SORT_BY
-    assert cfg.labels == DEFAULT_LABELS
-    assert cfg.branch_prefixes == []
+    assert cfg.labels == []
+    assert cfg.branch_prefixes == DEFAULT_BRANCH_PREFIXES
     assert cfg.match_mode == DEFAULT_MATCH_MODE
 
 
@@ -82,6 +82,17 @@ def test_config_branch_prefixes_without_labels_disables_labels(tmp_path: Path) -
 
     assert cfg.labels == []
     assert cfg.branch_prefixes == ["renovate/"]
+
+
+def test_config_labels_only_disables_default_branch_prefixes(tmp_path: Path) -> None:
+    """Setting only labels (no branch_prefixes) does not pull in the default branch prefix."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('labels = ["Renovate"]\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.labels == ["Renovate"]
+    assert cfg.branch_prefixes == []
 
 
 def test_config_invalid_match_mode_raises(tmp_path: Path) -> None:
@@ -304,7 +315,7 @@ def test_config_gitea_instance_labels_override(tmp_path: Path) -> None:
 def test_config_github_branch_prefixes_override(tmp_path: Path) -> None:
     """[github].branch_prefixes overrides the global default for the github forge only."""
     config_path = tmp_path / "config.toml"
-    config_path.write_text('[github]\nbranch_prefixes = ["renovate/"]\n')
+    config_path.write_text('labels = ["Renovate"]\n\n[github]\nbranch_prefixes = ["renovate/"]\n')
 
     cfg = load_config(config_path)
 

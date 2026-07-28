@@ -108,8 +108,8 @@ lsrenovate reads an optional TOML config file at your platform's user config dir
 
 ```toml
 merge_method = "squash"                # "squash" (default), "merge", or "rebase"
-labels = ["Renovate"]                  # default PR label(s) to filter on; all must match
-branch_prefixes = []                   # default branch-name prefix(es) to filter on; any one matches
+labels = []                            # default PR label(s) to filter on; all must match
+branch_prefixes = ["renovate/"]        # default branch-name prefix(es) to filter on; any one matches
 match_mode = "and"                     # "and" (default) or "or" - how labels + branch_prefixes combine
 sort_by = "repo"                       # "repo" (default), "age", or "title"
 myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this config
@@ -144,6 +144,8 @@ login = "gitea.example.com"            # optional; defaults to the host itself
 `token_command` (under `[github]` or any `[gitlab."<host>"]` table) is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If it fails, lsrenovate falls back to the plaintext `token` (or, for GitHub, `gh`'s own auth) and shows a warning on startup.
 
 ### Filtering PRs: labels and branch prefixes
+
+By default, lsrenovate matches PRs by branch prefix `renovate/` (Renovate's own default branch-naming convention), not by label — this works out of the box without any config, since it doesn't depend on which label your Renovate setup happens to use.
 
 Renovate (and similar bots) don't always use the same label across every forge — for example, GitHub/GitLab repos might use `Renovate` while Gitea repos use `dependencies`. Set `labels` at the top level for the default used everywhere, and override it per forge (`[github]`) or per instance (`[gitlab."<host>"]`, `[gitea."<host>"]`) wherever it differs. Multiple labels are always matched with AND semantics — a PR must carry every configured label, not just one.
 

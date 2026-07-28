@@ -64,7 +64,9 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     assert Path(cmd[0]).name == "gh"
     assert cmd[1:3] == ["pr", "list"]
     assert cmd[cmd.index("-R") + 1] == "mxmehl/my-tool"
-    assert cmd[cmd.index("--label") + 1] == "Renovate"
+    # with no labels/branch_prefixes configured, the default is branch-prefix
+    # matching (renovate/) rather than a label, so no --label flag is sent
+    assert "--label" not in cmd
     assert kwargs["env"]["GH_TOKEN"] == "secret-token"
 
     assert len(prs) == 1

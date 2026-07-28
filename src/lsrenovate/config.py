@@ -25,7 +25,7 @@ DEFAULT_MERGE_METHOD = "squash"
 VALID_MERGE_METHODS = {"squash", "merge", "rebase"}
 DEFAULT_SORT_BY = "repo"
 VALID_SORT_BY = {"repo", "age", "title"}
-DEFAULT_LABELS = ["Renovate"]
+DEFAULT_BRANCH_PREFIXES = ["renovate/"]
 DEFAULT_MATCH_MODE = "and"
 VALID_MATCH_MODES = {"and", "or"}
 
@@ -298,7 +298,10 @@ def load_config(path: Path | None = None) -> Config:
 
     labels, branch_prefixes, _ = _resolve_table_filters(file_data)
     if labels is None:
-        labels = list(DEFAULT_LABELS)
+        # Neither labels nor branch_prefixes configured at all: default to Renovate's
+        # own branch-naming convention rather than a label (which varies by project/forge).
+        labels = []
+        branch_prefixes = list(DEFAULT_BRANCH_PREFIXES)
     branch_prefixes = branch_prefixes or []
 
     return Config(

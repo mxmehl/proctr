@@ -39,6 +39,7 @@ from lsrenovate.forges.base import (
     PullRequest,
     branch_matches_prefixes,
     combine_match,
+    resolve_filter_defaults,
 )
 
 if TYPE_CHECKING:
@@ -64,8 +65,7 @@ class GiteaForge(Forge):
     ) -> None:
         """Initialize with a pre-registered tea login name and the label/branch-prefix filters."""
         self._login = login
-        self._labels = ["Renovate"] if labels is None else labels
-        self._branch_prefixes = branch_prefixes or []
+        self._labels, self._branch_prefixes = resolve_filter_defaults(labels, branch_prefixes)
         self._match_mode = match_mode
 
     def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:

@@ -17,12 +17,17 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import Forge, MergeResult, PullRequest, branch_matches_prefixes
+from lsrenovate.forges.base import (
+    Forge,
+    MergeResult,
+    PullRequest,
+    branch_matches_prefixes,
+    resolve_filter_defaults,
+)
 
 if TYPE_CHECKING:
     from lsrenovate.projects import Repo
 
-DEFAULT_LABELS = ("Renovate",)
 GLAB_EXECUTABLE = shutil.which("glab") or "glab"
 MERGEABLE = "MERGEABLE"
 CONFLICTING = "CONFLICTING"
@@ -44,8 +49,7 @@ class GitLabForge(Forge):
         """Initialize for a single GitLab host, with an optional token and filters."""
         self._host = host
         self._token = token
-        self._labels = list(DEFAULT_LABELS) if labels is None else labels
-        self._branch_prefixes = branch_prefixes or []
+        self._labels, self._branch_prefixes = resolve_filter_defaults(labels, branch_prefixes)
         self._match_mode = match_mode
 
     def _env(self) -> dict[str, str]:
