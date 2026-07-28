@@ -32,7 +32,7 @@ A PR is only color-coded ready when both are favorable; see the Gitea note below
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.11+
 - One CLI per forge you actually use:
   - [GitHub CLI (`gh`)](https://cli.github.com/), authenticated or provided a token via config/env (see below)
   - [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli), no pre-login required — lsrenovate injects the token per call (see below)
@@ -40,9 +40,23 @@ A PR is only color-coded ready when both are favorable; see the Gitea note below
 
 ## Installation
 
-### From PyPI
+Requires at least Python 3.11.
 
-```sh
+With [pipx](https://pipx.pypa.io/):
+
+```bash
+pipx install lsrenovate
+```
+
+With [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv tool install lsrenovate
+```
+
+With pip:
+
+```bash
 pip install lsrenovate
 ```
 
