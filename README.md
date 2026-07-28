@@ -109,6 +109,8 @@ lsrenovate reads an optional TOML config file at your platform's user config dir
 ```toml
 merge_method = "squash"                # "squash" (default), "merge", or "rebase"
 labels = ["Renovate"]                  # default PR label(s) to filter on; all must match
+branch_prefixes = []                   # default branch-name prefix(es) to filter on; any one matches
+match_mode = "and"                     # "and" (default) or "or" - how labels + branch_prefixes combine
 sort_by = "repo"                       # "repo" (default), "age", or "title"
 myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this config
 
@@ -116,6 +118,8 @@ myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this
 token = "ghp_..."                      # optional; env var GITHUB_TOKEN takes precedence
 token_command = ["kpxc_get_password", "cli://token-gh-cli"]  # optional; takes precedence over token
 # labels = ["Renovate"]                # optional; overrides the global `labels` for GitHub only
+# branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for GitHub only
+# match_mode = "or"                    # optional; overrides the global `match_mode` for GitHub only
 
 # One [gitlab."<host>"] table per self-hosted GitLab instance you use.
 # <host> must match the hostname in the repo's url in myprojects.yaml.
@@ -127,17 +131,32 @@ token = "glpat-..."                    # optional; or use token_command like abo
                                         # hostname than the one in your repo URLs
                                         # (e.g. glab auth login ran against an SSH host)
 # labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
+# branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for this instance only
 
 # One [gitea."<host>"] table per Gitea instance you use. lsrenovate never
 # handles Gitea tokens itself — see the note below.
 [gitea."gitea.example.com"]
 login = "gitea.example.com"            # optional; defaults to the host itself
 # labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
+# branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for this instance only
 ```
 
 `token_command` (under `[github]` or any `[gitlab."<host>"]` table) is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If it fails, lsrenovate falls back to the plaintext `token` (or, for GitHub, `gh`'s own auth) and shows a warning on startup.
 
+### Filtering PRs: labels and branch prefixes
+
 Renovate (and similar bots) don't always use the same label across every forge — for example, GitHub/GitLab repos might use `Renovate` while Gitea repos use `dependencies`. Set `labels` at the top level for the default used everywhere, and override it per forge (`[github]`) or per instance (`[gitlab."<host>"]`, `[gitea."<host>"]`) wherever it differs. Multiple labels are always matched with AND semantics — a PR must carry every configured label, not just one.
+
+You can additionally (or instead) filter by branch name prefix via `branch_prefixes`, e.g. `["renovate/"]` to match Renovate's default branch naming. Multiple prefixes are matched with OR semantics — a PR matches if its branch starts with any one of them. `branch_prefixes` follows the same global/per-forge/per-instance override hierarchy as `labels`.
+
+`labels` may be set to `[]` to disable label filtering entirely at a given level (e.g. `labels = []` with `branch_prefixes = ["renovate/"]` set at the same level matches by branch prefix alone). As a convenience, setting `branch_prefixes` at a level without also setting `labels` there implies `labels = []` at that level — you don't need to explicitly disable labels when you only care about the branch prefix. At least one of `labels` or `branch_prefixes` must be non-empty (after overrides are resolved) for each forge/instance actually in use, or lsrenovate raises a configuration error at startup.
+
+When both `labels` and `branch_prefixes` are configured (and non-empty) for the same forge/instance, `match_mode` decides how they combine:
+
+- `"and"` (default): a PR must satisfy both filters.
+- `"or"`: a PR is included if it satisfies either filter.
+
+`match_mode = "or"` has an extra cost on GitHub and GitLab: `gh`/`glab` can only pre-filter PRs by label server-side (not by branch prefix), so satisfying OR semantics correctly requires one additional, unfiltered list call per repo (to also catch PRs that match the branch prefix but not the label), whose results are merged with the label-filtered query. This only happens when `match_mode = "or"` **and** both filters are non-empty; the common cases (AND mode, or only one filter configured) stay a single call. Gitea has no server-side label filter at all, so it always does one call and matches everything client-side regardless of `match_mode`.
 
 ### Gitea limitation: no token management
 

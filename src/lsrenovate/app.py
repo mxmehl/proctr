@@ -144,28 +144,80 @@ class ForgeDispatcher:
             self._cache[cache_key] = self._build(repo)
         return self._cache[cache_key]
 
+    def _resolve_filters(
+        self,
+        *,
+        labels: list[str] | None,
+        branch_prefixes: list[str] | None,
+        match_mode: str | None,
+        context: str,
+    ) -> tuple[list[str], list[str], str]:
+        """Merge per-forge/instance filter overrides with the global config.
+
+        `None` means "not set at this level, inherit the global value" -
+        an explicit `[]` is a real override (label/branch filtering
+        disabled at this level), so plain `or` fallback would be wrong.
+        """
+        resolved_labels = labels if labels is not None else self._config.labels
+        resolved_branch_prefixes = (
+            branch_prefixes if branch_prefixes is not None else self._config.branch_prefixes
+        )
+        resolved_match_mode = match_mode if match_mode is not None else self._config.match_mode
+        if not resolved_labels and not resolved_branch_prefixes:
+            msg = f"No labels or branch_prefixes configured for {context}"
+            raise ValueError(msg)
+        return resolved_labels, resolved_branch_prefixes, resolved_match_mode
+
     def _build(self, repo: Repo) -> Forge:
         if repo.forge == "github":
             github = self._config.github
+            labels, branch_prefixes, match_mode = self._resolve_filters(
+                labels=github.labels,
+                branch_prefixes=github.branch_prefixes,
+                match_mode=github.match_mode,
+                context="github",
+            )
             return GitHubForge(
-                github_token=github.token, labels=github.labels or self._config.labels
+                github_token=github.token,
+                labels=labels,
+                branch_prefixes=branch_prefixes,
+                match_mode=match_mode,
             )
         if repo.forge == "gitlab":
             instance = self._config.gitlab_instances.get(repo.host)
             if instance is None:
                 msg = f'No [gitlab."{repo.host}"] configuration found for this host'
                 raise ValueError(msg)
+            labels, branch_prefixes, match_mode = self._resolve_filters(
+                labels=instance.labels,
+                branch_prefixes=instance.branch_prefixes,
+                match_mode=instance.match_mode,
+                context=f'gitlab."{repo.host}"',
+            )
             return GitLabForge(
                 host=instance.api_host or repo.host,
                 token=instance.token,
-                labels=instance.labels or self._config.labels,
+                labels=labels,
+                branch_prefixes=branch_prefixes,
+                match_mode=match_mode,
             )
         if repo.forge == "gitea":
             instance = self._config.gitea_instances.get(repo.host)
             if instance is None:
                 msg = f'No [gitea."{repo.host}"] configuration found for this host'
                 raise ValueError(msg)
-            return GiteaForge(login=instance.login, labels=instance.labels or self._config.labels)
+            labels, branch_prefixes, match_mode = self._resolve_filters(
+                labels=instance.labels,
+                branch_prefixes=instance.branch_prefixes,
+                match_mode=instance.match_mode,
+                context=f'gitea."{repo.host}"',
+            )
+            return GiteaForge(
+                login=instance.login,
+                labels=labels,
+                branch_prefixes=branch_prefixes,
+                match_mode=match_mode,
+            )
         msg = f"Unsupported forge '{repo.forge}' for {repo.full_name}"
         raise ValueError(msg)
 

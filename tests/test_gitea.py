@@ -159,6 +159,50 @@ def test_no_labels_configured_or_matching_returns_empty() -> None:
     assert prs == []
 
 
+def test_branch_prefix_only_mode_matches_by_head_field() -> None:
+    """With labels=[], PRs are matched solely by the head branch field's prefix."""
+    forge = GiteaForge(login="git.fsfe.org", labels=[], branch_prefixes=["renovate/"])
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    with patch("subprocess.run", side_effect=[list_result, status_result]):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert [pr.number for pr in prs] == [427]
+
+
+def test_and_mode_requires_both_label_and_branch_prefix() -> None:
+    """match_mode='and' (default) excludes a PR that only matches one of the two filters."""
+    forge = GiteaForge(
+        login="git.fsfe.org",
+        labels=["Renovate"],
+        branch_prefixes=["quoted-selectors"],
+        match_mode="and",
+    )
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    with patch("subprocess.run", return_value=list_result):
+        prs = forge.list_renovate_prs(REPO)
+
+    # PR 427 has the label but not the branch prefix; PR 285 has the branch prefix but not
+    # the label - neither satisfies both, so both are excluded.
+    assert prs == []
+
+
+def test_or_mode_matches_either_label_or_branch_prefix() -> None:
+    """match_mode='or' includes a PR that matches only one of the two filters."""
+    forge = GiteaForge(
+        login="git.fsfe.org",
+        labels=["Renovate"],
+        branch_prefixes=["quoted-selectors"],
+        match_mode="or",
+    )
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    with patch("subprocess.run", side_effect=[list_result, status_result, status_result]):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert {pr.number for pr in prs} == {427, 285}
+
+
 def test_merge_pr_success_uses_style_flag(pull_request: PullRequest) -> None:
     """merge_method='squash' translates to tea's --style squash."""
     forge = GiteaForge(login="git.fsfe.org")

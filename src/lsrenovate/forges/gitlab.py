@@ -17,7 +17,7 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+from lsrenovate.forges.base import Forge, MergeResult, PullRequest, branch_matches_prefixes
 
 if TYPE_CHECKING:
     from lsrenovate.projects import Repo
@@ -31,18 +31,22 @@ FAILED_PIPELINE_STATUSES = {"failed", "canceled", "skipped"}
 
 
 class GitLabForge(Forge):
-    """Lists and merges PRs matching configured label(s) via the glab CLI."""
+    """Lists and merges PRs matching configured label(s) and/or branch prefix(es) via glab."""
 
     def __init__(
         self,
         host: str,
         token: str | None,
         labels: list[str] | None = None,
+        branch_prefixes: list[str] | None = None,
+        match_mode: str = "and",
     ) -> None:
-        """Initialize for a single GitLab host, with an optional token and labels."""
+        """Initialize for a single GitLab host, with an optional token and filters."""
         self._host = host
         self._token = token
-        self._labels = labels or list(DEFAULT_LABELS)
+        self._labels = list(DEFAULT_LABELS) if labels is None else labels
+        self._branch_prefixes = branch_prefixes or []
+        self._match_mode = match_mode
 
     def _env(self) -> dict[str, str]:
         env = dict(os.environ)
@@ -51,15 +55,13 @@ class GitLabForge(Forge):
             env["GITLAB_TOKEN"] = self._token
         return env
 
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
-        """Return open MRs matching all configured labels via glab mr list.
-
-        `mergeable` reflects only whether GitLab sees a merge conflict
-        (has_conflicts). Pipeline/CI outcome is a separate signal that
-        `glab mr list` doesn't expose at all, so for each MR we do one
-        follow-up `glab mr view` call to fetch the head pipeline status.
-        """
-        label_flags = [flag for label in self._labels for flag in ("--label", label)]
+    def _fetch_mrs(self, repo: Repo, *, use_label_filter: bool) -> list[dict]:
+        """Run glab mr list, optionally pre-filtering server-side by label(s)."""
+        label_flags = (
+            [flag for label in self._labels for flag in ("--label", label)]
+            if use_label_filter
+            else []
+        )
         result = subprocess.run(  # noqa: S603
             [
                 GLAB_EXECUTABLE,
@@ -76,7 +78,46 @@ class GitLabForge(Forge):
             env=self._env(),
             check=True,
         )
-        raw_mrs = json.loads(result.stdout)
+        return json.loads(result.stdout)
+
+    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+        """Return open MRs matching the configured labels and/or branch prefixes.
+
+        `mergeable` reflects only whether GitLab sees a merge conflict
+        (has_conflicts). Pipeline/CI outcome is a separate signal that
+        `glab mr list` doesn't expose at all, so for each MR we do one
+        follow-up `glab mr view` call to fetch the head pipeline status.
+
+        Labels are still filtered server-side via `--label` whenever
+        possible. The one case needing two queries is `match_mode == "or"`
+        with both filters configured: an MR matching branch_prefixes alone
+        must be included too, so a second, unfiltered query is fetched and
+        filtered client-side by source branch, then unioned with the
+        label-filtered query (deduped by MR iid).
+        """
+        labels_enabled = bool(self._labels)
+        branch_enabled = bool(self._branch_prefixes)
+
+        if labels_enabled and branch_enabled and self._match_mode == "or":
+            label_matched = self._fetch_mrs(repo, use_label_filter=True)
+            all_mrs = self._fetch_mrs(repo, use_label_filter=False)
+            branch_matched = [
+                mr
+                for mr in all_mrs
+                if branch_matches_prefixes(mr["source_branch"], self._branch_prefixes)
+            ]
+            combined = {mr["iid"]: mr for mr in label_matched}
+            combined.update({mr["iid"]: mr for mr in branch_matched})
+            raw_mrs = list(combined.values())
+        else:
+            raw_mrs = self._fetch_mrs(repo, use_label_filter=labels_enabled)
+            if branch_enabled:
+                raw_mrs = [
+                    mr
+                    for mr in raw_mrs
+                    if branch_matches_prefixes(mr["source_branch"], self._branch_prefixes)
+                ]
+
         prs = []
         for mr in raw_mrs:
             pipeline_status = self._head_pipeline_status(repo, mr["iid"])

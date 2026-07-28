@@ -32,6 +32,7 @@ FAKE_PR_JSON = [
         "updatedAt": "2026-07-02T10:00:00Z",
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
+        "headRefName": "renovate/foo-2.x",
     }
 ]
 
@@ -83,6 +84,54 @@ def test_list_prs_with_multiple_configured_labels() -> None:
     label_positions = [i for i, arg in enumerate(cmd) if arg == "--label"]
     label_values = [cmd[i + 1] for i in label_positions]
     assert label_values == ["Renovate", "dependencies"]
+
+
+def test_branch_prefix_only_mode_disables_label_flags() -> None:
+    """With labels=[], no --label flags are sent and PRs are filtered by branch prefix only."""
+    forge = GitHubForge(github_token=None, labels=[], branch_prefixes=["renovate/"])
+    fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    with patch("subprocess.run", return_value=fake_result) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    cmd = mock_run.call_args.args[0]
+    assert "--label" not in cmd
+    assert len(prs) == 1
+
+
+def test_and_mode_narrows_label_filtered_results_by_branch_prefix() -> None:
+    """match_mode='and' (default) does a single label-filtered query, then filters by branch."""
+    forge = GitHubForge(
+        github_token=None, labels=["Renovate"], branch_prefixes=["dependabot/"], match_mode="and"
+    )
+    fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    with patch("subprocess.run", return_value=fake_result) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    assert mock_run.call_count == 1
+    assert "--label" in mock_run.call_args.args[0]
+    assert prs == []  # headRefName "renovate/foo-2.x" doesn't match "dependabot/"
+
+
+def test_or_mode_unions_label_and_branch_matches_with_two_queries() -> None:
+    """match_mode='or' with both filters runs two queries and unions/dedupes the results."""
+    label_only_pr = {**FAKE_PR_JSON[0], "number": 1, "headRefName": "some-other-branch"}
+    branch_only_pr = {**FAKE_PR_JSON[0], "number": 2, "headRefName": "renovate/bar-1.x"}
+    in_both_pr = {**FAKE_PR_JSON[0], "number": 3, "headRefName": "renovate/baz-1.x"}
+
+    forge = GitHubForge(
+        github_token=None, labels=["Renovate"], branch_prefixes=["renovate/"], match_mode="or"
+    )
+    label_filtered_result = MagicMock(stdout=json.dumps([label_only_pr, in_both_pr]))
+    unfiltered_result = MagicMock(stdout=json.dumps([label_only_pr, branch_only_pr, in_both_pr]))
+    with patch(
+        "subprocess.run", side_effect=[label_filtered_result, unfiltered_result]
+    ) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    assert mock_run.call_count == 2
+    assert "--label" in mock_run.call_args_list[0].args[0]
+    assert "--label" not in mock_run.call_args_list[1].args[0]
+    assert {pr.number for pr in prs} == {1, 2, 3}
 
 
 def test_merge_pr_success(pull_request: PullRequest) -> None:

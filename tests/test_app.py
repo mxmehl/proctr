@@ -172,6 +172,8 @@ def test_merge_batch_reports_start_and_per_pr_progress() -> None:
             myprojects_path=myprojects_path,
             sort_by="repo",
             labels=["Renovate"],
+            branch_prefixes=[],
+            match_mode="and",
             gitlab_instances={},
             gitea_instances={},
         )

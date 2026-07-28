@@ -12,25 +12,33 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+from lsrenovate.forges.base import Forge, MergeResult, PullRequest, branch_matches_prefixes
 
 if TYPE_CHECKING:
     from lsrenovate.projects import Repo
 
 DEFAULT_LABELS = ("Renovate",)
-LIST_FIELDS = "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus"
+LIST_FIELDS = "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus,headRefName"
 GH_EXECUTABLE = shutil.which("gh") or "gh"
 READY_MERGEABLE = "MERGEABLE"
 READY_MERGE_STATE = "CLEAN"
 
 
 class GitHubForge(Forge):
-    """Lists and merges PRs matching configured label(s) via the gh CLI."""
+    """Lists and merges PRs matching configured label(s) and/or branch prefix(es) via the gh CLI."""
 
-    def __init__(self, github_token: str | None, labels: list[str] | None = None) -> None:
-        """Initialize with an optional token and label filter (defaults to DEFAULT_LABELS)."""
+    def __init__(
+        self,
+        github_token: str | None,
+        labels: list[str] | None = None,
+        branch_prefixes: list[str] | None = None,
+        match_mode: str = "and",
+    ) -> None:
+        """Initialize with an optional token and the label/branch-prefix filters."""
         self._github_token = github_token
-        self._labels = labels or list(DEFAULT_LABELS)
+        self._labels = list(DEFAULT_LABELS) if labels is None else labels
+        self._branch_prefixes = branch_prefixes or []
+        self._match_mode = match_mode
 
     def _env(self) -> dict[str, str]:
         env = dict(os.environ)
@@ -38,9 +46,13 @@ class GitHubForge(Forge):
             env["GH_TOKEN"] = self._github_token
         return env
 
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
-        """Return open PRs matching all configured labels via gh pr list."""
-        label_flags = [flag for label in self._labels for flag in ("--label", label)]
+    def _fetch_prs(self, repo: Repo, *, use_label_filter: bool) -> list[dict]:
+        """Run gh pr list, optionally pre-filtering server-side by label(s)."""
+        label_flags = (
+            [flag for label in self._labels for flag in ("--label", label)]
+            if use_label_filter
+            else []
+        )
         result = subprocess.run(  # noqa: S603
             [
                 GH_EXECUTABLE,
@@ -57,7 +69,42 @@ class GitHubForge(Forge):
             env=self._env(),
             check=True,
         )
-        raw_prs = json.loads(result.stdout)
+        return json.loads(result.stdout)
+
+    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+        """Return open PRs matching the configured labels and/or branch prefixes.
+
+        Labels are still filtered server-side via `--label` whenever
+        possible (AND semantics, same as before). The one case that needs
+        two queries is `match_mode == "or"` with both filters configured:
+        a PR matching branch_prefixes alone (without the label) must be
+        included too, so a second, unfiltered query is fetched and
+        filtered client-side by branch prefix, then unioned with the
+        label-filtered query (deduped by PR number).
+        """
+        labels_enabled = bool(self._labels)
+        branch_enabled = bool(self._branch_prefixes)
+
+        if labels_enabled and branch_enabled and self._match_mode == "or":
+            label_matched = self._fetch_prs(repo, use_label_filter=True)
+            all_prs = self._fetch_prs(repo, use_label_filter=False)
+            branch_matched = [
+                pr
+                for pr in all_prs
+                if branch_matches_prefixes(pr["headRefName"], self._branch_prefixes)
+            ]
+            combined = {pr["number"]: pr for pr in label_matched}
+            combined.update({pr["number"]: pr for pr in branch_matched})
+            raw_prs = list(combined.values())
+        else:
+            raw_prs = self._fetch_prs(repo, use_label_filter=labels_enabled)
+            if branch_enabled:
+                raw_prs = [
+                    pr
+                    for pr in raw_prs
+                    if branch_matches_prefixes(pr["headRefName"], self._branch_prefixes)
+                ]
+
         return [
             PullRequest(
                 repo=repo,

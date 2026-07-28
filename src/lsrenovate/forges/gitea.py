@@ -33,7 +33,13 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+from lsrenovate.forges.base import (
+    Forge,
+    MergeResult,
+    PullRequest,
+    branch_matches_prefixes,
+    combine_match,
+)
 
 if TYPE_CHECKING:
     from lsrenovate.projects import Repo
@@ -47,19 +53,28 @@ FAILED_COMBINED_STATUSES = {"error", "failure"}
 
 
 class GiteaForge(Forge):
-    """Lists and merges PRs matching configured label(s) via the tea CLI."""
+    """Lists and merges PRs matching configured label(s) and/or branch prefix(es) via tea."""
 
-    def __init__(self, login: str, labels: list[str] | None = None) -> None:
-        """Initialize with a pre-registered tea login name and label filter."""
+    def __init__(
+        self,
+        login: str,
+        labels: list[str] | None = None,
+        branch_prefixes: list[str] | None = None,
+        match_mode: str = "and",
+    ) -> None:
+        """Initialize with a pre-registered tea login name and the label/branch-prefix filters."""
         self._login = login
-        self._labels = labels or ["Renovate"]
+        self._labels = ["Renovate"] if labels is None else labels
+        self._branch_prefixes = branch_prefixes or []
+        self._match_mode = match_mode
 
     def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
-        """Return open PRs matching all configured labels via tea pulls list.
+        """Return open PRs matching the configured labels and/or branch prefixes.
 
-        Label filtering happens client-side: tea has no --labels flag on
-        `pulls list`, so all open PRs are fetched and filtered locally
-        against the comma-separated `labels` field.
+        Neither filter has server-side support in `tea pulls list`, so all
+        open PRs are fetched and both are matched client-side (labels
+        against the comma-separated `labels` field, branch prefix against
+        the `head` field), combined per `match_mode`.
         """
         result = subprocess.run(  # noqa: S603
             [
@@ -80,9 +95,18 @@ class GiteaForge(Forge):
             check=True,
         )
         raw_prs = json.loads(result.stdout)
+        labels_enabled = bool(self._labels)
+        branch_enabled = bool(self._branch_prefixes)
         prs = []
         for pr in raw_prs:
-            if not self._has_all_labels(pr.get("labels", "")):
+            matched = combine_match(
+                label_match=self._has_all_labels(pr.get("labels", "")),
+                branch_match=branch_matches_prefixes(pr["head"], self._branch_prefixes),
+                labels_enabled=labels_enabled,
+                branch_enabled=branch_enabled,
+                match_mode=self._match_mode,
+            )
+            if not matched:
                 continue
             combined_status = self._combined_status(repo, pr["head"])
             mergeable = pr["mergeable"]

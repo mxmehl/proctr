@@ -53,6 +53,38 @@ class MergeResult:
     message: str
 
 
+def branch_matches_prefixes(branch: str, prefixes: list[str]) -> bool:
+    """Return True if branch starts with any of the configured prefixes (OR semantics)."""
+    return any(branch.startswith(prefix) for prefix in prefixes)
+
+
+def combine_match(
+    *,
+    label_match: bool,
+    branch_match: bool,
+    labels_enabled: bool,
+    branch_enabled: bool,
+    match_mode: str,
+) -> bool:
+    """Combine the labels and branch-prefix filters into a single match decision.
+
+    If both filters are enabled (non-empty), they're combined per
+    `match_mode` ("and" or "or"). If only one is enabled, its result alone
+    decides. If neither is enabled, everything matches (in practice this
+    shouldn't happen: callers validate at config-load time that at least
+    one filter is configured).
+    """
+    if labels_enabled and branch_enabled:
+        if match_mode == "and":
+            return label_match and branch_match
+        return label_match or branch_match
+    if labels_enabled:
+        return label_match
+    if branch_enabled:
+        return branch_match
+    return True
+
+
 class Forge(ABC):
     """Interface a forge adapter (github/gitlab/gitea) must implement."""
 
