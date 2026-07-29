@@ -39,7 +39,7 @@ A PR is only color-coded ready when Mergeable and Pipeline are both favorable; s
 - Python 3.11+
 - One CLI per forge you actually use:
   - [GitHub CLI (`gh`)](https://cli.github.com/), authenticated or provided a token via config/env (see below)
-  - [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli), no pre-login required — proctr injects the token per call (see below)
+  - [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli), authenticated or provided via token in config/env (see below)
   - [Gitea CLI (`tea`)](https://gitea.com/gitea/tea), **must be pre-authenticated yourself** via `tea login add` (see the Gitea note below)
 
 ## Installation
@@ -98,11 +98,13 @@ uv sync --no-dev
 
    Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. `forge` must be `github`, `gitlab`, or `gitea`. If your local clones don't follow that convention, set an optional `path` on the project to use an explicit local path instead, e.g. `path: ~/code/my-tool`.
 
-2. **Provide a GitHub token**, in order of precedence:
-   - `GITHUB_TOKEN` environment variable, or
-   - `[github].token_command` in the config file — a command that prints the token to stdout, e.g. a password manager CLI, or
-   - `[github].token` in the config file (plaintext), or
-   - fall back to `gh`'s own stored authentication.
+   **Save this file somewhere** (e.g. `~/myprojects.yaml`) and point to it in your config file (see below).
+
+2. **Provide token for your forges** (e.g. GitHub), in order of precedence:
+   - `GITHUB_TOKEN` / `GITLAB_TOKEN` environment variable, or
+   - `[github].token_command` (`[gitea.*/gitlab.*].token_command` respectively) in the config file — a command that prints the token to stdout, e.g. a password manager CLI, or
+   - `[github].token` (`[gitea.*/gitlab.*].token` respectively) in the config file (plaintext), or
+   - fall back to `gh`/`glab`/`tea`'s own stored authentication.
 
 3. **Run it:**
 
@@ -130,7 +132,7 @@ myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this
 
 [github]
 token = "ghp_..."                      # optional; env var GITHUB_TOKEN takes precedence
-token_command = ["kpxc_get_password", "cli://token-gh-cli"]  # optional; takes precedence over token
+# token_command = ["pass", "github"]   # optional; takes precedence over token
 # labels = ["Renovate"]                # optional; overrides the global `labels` for GitHub only
 # branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for GitHub only
 # match_mode = "or"                    # optional; overrides the global `match_mode` for GitHub only
@@ -139,11 +141,11 @@ token_command = ["kpxc_get_password", "cli://token-gh-cli"]  # optional; takes p
 # <host> must match the hostname in the repo's url in myprojects.yaml.
 [gitlab."gitlab.example.com"]
 token = "glpat-..."                    # optional; or use token_command like above
-# token_command = ["kpxc_get_password", "cli://token-gitlab-example"]
-# api_host = "ssh.gitlab.example.com"   # optional; only needed if `glab auth status`
-                                        # shows your token stored under a different
-                                        # hostname than the one in your repo URLs
-                                        # (e.g. glab auth login ran against an SSH host)
+# token_command = ["pass", "gitlab"]   # optional; takes precedence over token
+# api_host = "ssh.gitlab.example.com"  # optional; only needed if `glab auth status`
+                                       # shows your token stored under a different
+                                       # hostname than the one in your repo URLs
+                                       # (e.g. glab auth login ran against an SSH host)
 # labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
 # branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for this instance only
 
