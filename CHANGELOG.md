@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.0](https://github.com/mxmehl/proctr/compare/v0.3.1...v1.0.0) (2026-07-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* rename project from lsrenovate to proctr
+
+### 🚀 New Features
+
+* allow to override local path in myprojects ([#14](https://github.com/mxmehl/proctr/issues/14)) ([8e33ce6](https://github.com/mxmehl/proctr/commit/8e33ce6e54ac530bc250d4facaa1c32c3014ca63))
+* search for renovate AND dependabot branch prefixes by default ([67eb022](https://github.com/mxmehl/proctr/commit/67eb0226fee0cf50d366a32ef463d8c4a6674d41))
+
+
+### ⚙️ Chores
+
+* rename project from lsrenovate to proctr ([0199387](https://github.com/mxmehl/proctr/commit/01993875ce53117445d1d5dacddd9de2f516608d))
+
 ## [0.3.1](https://github.com/mxmehl/lsrenovate/compare/v0.3.0...v0.3.1) (2026-07-29)
 
 
