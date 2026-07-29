@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/mxmehl/lsrenovate/compare/v0.2.0...v0.3.0) (2026-07-29)
+
+
+### 🚀 New Features
+
+* filter by branch prefix ([#9](https://github.com/mxmehl/lsrenovate/issues/9)) ([e27a81b](https://github.com/mxmehl/lsrenovate/commit/e27a81bcc46d7d11b6b1bdaf29417da4d23562c8))
+* introduce Review column and ability to approve PRs ([#10](https://github.com/mxmehl/lsrenovate/issues/10)) ([3d8ffb1](https://github.com/mxmehl/lsrenovate/commit/3d8ffb13af3bb41c7bf133a0aed1dcdd4a1dee1e))
+
+
+### 🔥 Bug Fixes
+
+* **deps:** update dependency platformdirs to v4.11.0 ([#5](https://github.com/mxmehl/lsrenovate/issues/5)) ([4f1b79f](https://github.com/mxmehl/lsrenovate/commit/4f1b79f1c12a7f3cc1d544ad52637dad7608060f))
+* **deps:** update dependency textual to v0.89.1 ([#6](https://github.com/mxmehl/lsrenovate/issues/6)) ([75ce05a](https://github.com/mxmehl/lsrenovate/commit/75ce05a742f5225f4d70c96124ca1c0cc9221831))
+* **deps:** update dependency textual to v8 ([#8](https://github.com/mxmehl/lsrenovate/issues/8)) ([8d228b0](https://github.com/mxmehl/lsrenovate/commit/8d228b0c6ae249b32d39603a2328439bff45ddc8))
+
 ## [0.2.0](https://github.com/mxmehl/lsrenovate/compare/v0.1.0...v0.2.0) (2026-07-28)
 
 
