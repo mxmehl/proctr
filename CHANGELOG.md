@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/mxmehl/lsrenovate/compare/v0.3.0...v0.3.1) (2026-07-29)
+
+
+### 📚 Documentation
+
+* add demo mode and screenshots to README ([#11](https://github.com/mxmehl/lsrenovate/issues/11)) ([8a7ce3e](https://github.com/mxmehl/lsrenovate/commit/8a7ce3e9e3553c62a750c422364b97ed7cfba2a1))
+
 ## [0.3.0](https://github.com/mxmehl/lsrenovate/compare/v0.2.0...v0.3.0) (2026-07-29)
 
 
