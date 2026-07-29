@@ -3,7 +3,7 @@
 
 [project]
 name = "lsrenovate"
-version = "0.3.0"
+version = "0.3.1"
 description = "Terminal UI for triaging open Renovate pull requests across multiple repositories"
 readme = "README.md"
 license = "Apache-2.0"
