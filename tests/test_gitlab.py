@@ -31,6 +31,7 @@ FAKE_MR_JSON = [
         "created_at": "2026-07-01T10:00:00.000Z",
         "updated_at": "2026-07-02T10:00:00.000Z",
         "has_conflicts": False,
+        "source_branch": "renovate/foo-2.x",
     }
 ]
 
@@ -64,7 +65,9 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     assert Path(cmd[0]).name == "glab"
     assert cmd[1:3] == ["mr", "list"]
     assert cmd[cmd.index("-R") + 1] == "foss/my-tool"
-    assert cmd[cmd.index("--label") + 1] == "Renovate"
+    # with no labels/branch_prefixes configured, the default is branch-prefix
+    # matching (renovate/) rather than a label, so no --label flag is sent
+    assert "--label" not in cmd
     assert kwargs["env"]["GITLAB_TOKEN"] == "secret-token"
     assert kwargs["env"]["GITLAB_HOST"] == "gitlab.example.com"
 
@@ -138,6 +141,74 @@ def test_list_prs_with_multiple_configured_labels() -> None:
     label_positions = [i for i, arg in enumerate(cmd) if arg == "--label"]
     label_values = [cmd[i + 1] for i in label_positions]
     assert label_values == ["Renovate", "dependencies"]
+
+
+def test_branch_prefix_only_mode_disables_label_flags() -> None:
+    """With labels=[], no --label flags are sent and MRs are filtered by source branch only."""
+    forge = GitLabForge(
+        host="gitlab.example.com", token=None, labels=[], branch_prefixes=["renovate/"]
+    )
+    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
+    view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
+    with patch("subprocess.run", side_effect=[list_result, view_result]) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    cmd = mock_run.call_args_list[0].args[0]
+    assert "--label" not in cmd
+    assert len(prs) == 1
+
+
+def test_and_mode_narrows_label_filtered_results_by_branch_prefix() -> None:
+    """match_mode='and' (default) does a single label-filtered query, then filters by branch."""
+    forge = GitLabForge(
+        host="gitlab.example.com",
+        token=None,
+        labels=["Renovate"],
+        branch_prefixes=["dependabot/"],
+        match_mode="and",
+    )
+    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
+    with patch("subprocess.run", return_value=list_result) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    assert mock_run.call_count == 1
+    assert "--label" in mock_run.call_args_list[0].args[0]
+    assert prs == []  # source_branch "renovate/foo-2.x" doesn't match "dependabot/"
+
+
+def test_or_mode_unions_label_and_branch_matches_with_two_queries() -> None:
+    """match_mode='or' with both filters runs two queries and unions/dedupes the results."""
+    label_only_mr = {**FAKE_MR_JSON[0], "iid": 1, "source_branch": "some-other-branch"}
+    branch_only_mr = {**FAKE_MR_JSON[0], "iid": 2, "source_branch": "renovate/bar-1.x"}
+    in_both_mr = {**FAKE_MR_JSON[0], "iid": 3, "source_branch": "renovate/baz-1.x"}
+
+    forge = GitLabForge(
+        host="gitlab.example.com",
+        token=None,
+        labels=["Renovate"],
+        branch_prefixes=["renovate/"],
+        match_mode="or",
+    )
+    label_filtered_result = MagicMock(stdout=json.dumps([label_only_mr, in_both_mr]))
+    unfiltered_result = MagicMock(stdout=json.dumps([label_only_mr, branch_only_mr, in_both_mr]))
+    view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
+
+    with patch(
+        "subprocess.run",
+        side_effect=[
+            label_filtered_result,
+            unfiltered_result,
+            view_result,
+            view_result,
+            view_result,
+        ],
+    ) as mock_run:
+        prs = forge.list_renovate_prs(REPO)
+
+    assert mock_run.call_count == 5
+    assert "--label" in mock_run.call_args_list[0].args[0]
+    assert "--label" not in mock_run.call_args_list[1].args[0]
+    assert {pr.number for pr in prs} == {1, 2, 3}
 
 
 def test_merge_pr_success_uses_squash_flag(pull_request: PullRequest) -> None:

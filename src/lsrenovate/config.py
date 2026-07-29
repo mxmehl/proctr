@@ -17,6 +17,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+import jsonschema
 from platformdirs import user_config_dir
 
 APP_NAME = "lsrenovate"
@@ -24,7 +25,69 @@ DEFAULT_MERGE_METHOD = "squash"
 VALID_MERGE_METHODS = {"squash", "merge", "rebase"}
 DEFAULT_SORT_BY = "repo"
 VALID_SORT_BY = {"repo", "age", "title"}
-DEFAULT_LABELS = ["Renovate"]
+DEFAULT_BRANCH_PREFIXES = ["renovate/"]
+DEFAULT_MATCH_MODE = "and"
+VALID_MATCH_MODES = {"and", "or"}
+
+# Shared by the global config and every [github]/[gitlab."host"]/[gitea."host"] table:
+# a PR is matched by `labels` (AND semantics) and/or `branch_prefixes` (OR semantics),
+# combined per `match_mode`. See README for the full semantics.
+_FILTER_PROPERTIES = {
+    "labels": {"type": "array", "items": {"type": "string"}},
+    "branch_prefixes": {"type": "array", "items": {"type": "string"}},
+    "match_mode": {"type": "string", "enum": sorted(VALID_MATCH_MODES)},
+}
+
+# Validates structure/types/enums only (TOML shape, allowed values, table keys).
+# Cross-field logic (token precedence, login/api_host defaulting, "at least one
+# filter enabled") is Python-side, in load_config() and ForgeDispatcher._build.
+CONFIG_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "merge_method": {"type": "string", "enum": sorted(VALID_MERGE_METHODS)},
+        "sort_by": {"type": "string", "enum": sorted(VALID_SORT_BY)},
+        "myprojects_path": {"type": "string"},
+        **_FILTER_PROPERTIES,
+        "github": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "token": {"type": "string"},
+                "token_command": {"type": "array", "items": {"type": "string"}},
+                **_FILTER_PROPERTIES,
+            },
+        },
+        "gitlab": {
+            "type": "object",
+            "patternProperties": {
+                ".*": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "token": {"type": "string"},
+                        "token_command": {"type": "array", "items": {"type": "string"}},
+                        "api_host": {"type": "string", "minLength": 1},
+                        **_FILTER_PROPERTIES,
+                    },
+                },
+            },
+        },
+        "gitea": {
+            "type": "object",
+            "patternProperties": {
+                ".*": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "login": {"type": "string", "minLength": 1},
+                        **_FILTER_PROPERTIES,
+                    },
+                },
+            },
+        },
+    },
+}
 
 
 def config_file_path() -> Path:
@@ -85,24 +148,33 @@ def _resolve_token(
     return token, error
 
 
-def _validate_labels(labels: object, *, context: str) -> list[str]:
-    """Validate a labels value, returning it unchanged if it's a non-empty list of strings."""
-    if not isinstance(labels, list) or not labels:
-        msg = f"Invalid {context} '{labels}', must be a non-empty list of strings"
-        raise ValueError(msg)
-    validated: list[str] = [item for item in labels if isinstance(item, str)]
-    if len(validated) != len(labels):
-        msg = f"Invalid {context} '{labels}', must be a non-empty list of strings"
-        raise ValueError(msg)
-    return validated
+def _resolve_table_filters(
+    table: dict,
+) -> tuple[list[str] | None, list[str] | None, str | None]:
+    """Resolve (labels, branch_prefixes, match_mode) overrides from a table.
+
+    Schema validation already guarantees types, so this only applies the
+    "implicit disable" rule: setting `branch_prefixes` without `labels` at
+    the same level means labels are disabled at that level (`[]`), not
+    inherited from a higher level. Returns None for a field that isn't set
+    at all at this level (signalling "inherit from the level above").
+    """
+    labels = table.get("labels")
+    if labels is None and "branch_prefixes" in table:
+        labels = []
+    branch_prefixes = table.get("branch_prefixes")
+    match_mode = table.get("match_mode")
+    return labels, branch_prefixes, match_mode
 
 
 @dataclass(frozen=True)
 class GitHubConfig:
-    """GitHub credentials and label filter, resolved from the [github] table."""
+    """GitHub credentials and PR filter overrides, resolved from the [github] table."""
 
     token: str | None
     labels: list[str] | None = None
+    branch_prefixes: list[str] | None = None
+    match_mode: str | None = None
     token_command_error: str | None = None
 
 
@@ -121,6 +193,8 @@ class GitLabInstanceConfig:
     token: str | None
     api_host: str | None = None
     labels: list[str] | None = None
+    branch_prefixes: list[str] | None = None
+    match_mode: str | None = None
     token_command_error: str | None = None
 
 
@@ -136,6 +210,8 @@ class GiteaInstanceConfig:
 
     login: str
     labels: list[str] | None = None
+    branch_prefixes: list[str] | None = None
+    match_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -147,6 +223,8 @@ class Config:
     myprojects_path: Path
     sort_by: str
     labels: list[str]
+    branch_prefixes: list[str]
+    match_mode: str
     gitlab_instances: dict[str, GitLabInstanceConfig]
     gitea_instances: dict[str, GiteaInstanceConfig]
 
@@ -154,33 +232,30 @@ class Config:
 def _load_github_config(file_data: dict) -> GitHubConfig:
     """Parse the [github] table into a GitHubConfig."""
     table = file_data.get("github", {})
-    if not isinstance(table, dict):
-        msg = 'Invalid "github" entry, must be a table'
-        raise TypeError(msg)
     token, error = _resolve_token(table, env_var="GITHUB_TOKEN")
-    labels = table.get("labels")
-    if labels is not None:
-        labels = _validate_labels(labels, context="github.labels")
-    return GitHubConfig(token=token, labels=labels, token_command_error=error)
+    labels, branch_prefixes, match_mode = _resolve_table_filters(table)
+    return GitHubConfig(
+        token=token,
+        labels=labels,
+        branch_prefixes=branch_prefixes,
+        match_mode=match_mode,
+        token_command_error=error,
+    )
 
 
 def _load_gitlab_instances(file_data: dict) -> dict[str, GitLabInstanceConfig]:
     """Parse the [gitlab."<host>"] tables into per-host GitLab configs."""
     instances: dict[str, GitLabInstanceConfig] = {}
     for host, table in file_data.get("gitlab", {}).items():
-        if not isinstance(table, dict):
-            msg = f'Invalid gitlab."{host}" entry, must be a table'
-            raise TypeError(msg)
         token, error = _resolve_token(table)
-        api_host = table.get("api_host")
-        if api_host is not None and (not isinstance(api_host, str) or not api_host):
-            msg = f"Invalid gitlab.\"{host}\".api_host '{api_host}', must be a non-empty string"
-            raise ValueError(msg)
-        labels = table.get("labels")
-        if labels is not None:
-            labels = _validate_labels(labels, context=f'gitlab."{host}".labels')
+        labels, branch_prefixes, match_mode = _resolve_table_filters(table)
         instances[host] = GitLabInstanceConfig(
-            token=token, api_host=api_host, labels=labels, token_command_error=error
+            token=token,
+            api_host=table.get("api_host"),
+            labels=labels,
+            branch_prefixes=branch_prefixes,
+            match_mode=match_mode,
+            token_command_error=error,
         )
     return instances
 
@@ -193,17 +268,13 @@ def _load_gitea_instances(file_data: dict) -> dict[str, GiteaInstanceConfig]:
     """
     instances: dict[str, GiteaInstanceConfig] = {}
     for host, table in file_data.get("gitea", {}).items():
-        if not isinstance(table, dict):
-            msg = f'Invalid gitea."{host}" entry, must be a table'
-            raise TypeError(msg)
-        login = table.get("login", host)
-        if not isinstance(login, str) or not login:
-            msg = f"Invalid gitea.\"{host}\".login '{login}', must be a non-empty string"
-            raise ValueError(msg)
-        labels = table.get("labels")
-        if labels is not None:
-            labels = _validate_labels(labels, context=f'gitea."{host}".labels')
-        instances[host] = GiteaInstanceConfig(login=login, labels=labels)
+        labels, branch_prefixes, match_mode = _resolve_table_filters(table)
+        instances[host] = GiteaInstanceConfig(
+            login=table.get("login", host),
+            labels=labels,
+            branch_prefixes=branch_prefixes,
+            match_mode=match_mode,
+        )
     return instances
 
 
@@ -218,19 +289,20 @@ def load_config(path: Path | None = None) -> Config:
     if path.is_file():
         file_data = tomllib.loads(path.read_text())
 
+    jsonschema.validate(instance=file_data, schema=CONFIG_SCHEMA)
+
     merge_method = file_data.get("merge_method", DEFAULT_MERGE_METHOD)
-    if merge_method not in VALID_MERGE_METHODS:
-        msg = f"Invalid merge_method '{merge_method}', must be one of {VALID_MERGE_METHODS}"
-        raise ValueError(msg)
-
     myprojects_path = Path(file_data.get("myprojects_path", default_myprojects_path())).expanduser()
-
     sort_by = file_data.get("sort_by", DEFAULT_SORT_BY)
-    if sort_by not in VALID_SORT_BY:
-        msg = f"Invalid sort_by '{sort_by}', must be one of {VALID_SORT_BY}"
-        raise ValueError(msg)
+    match_mode = file_data.get("match_mode", DEFAULT_MATCH_MODE)
 
-    labels = _validate_labels(file_data.get("labels", DEFAULT_LABELS), context="labels")
+    labels, branch_prefixes, _ = _resolve_table_filters(file_data)
+    if labels is None:
+        # Neither labels nor branch_prefixes configured at all: default to Renovate's
+        # own branch-naming convention rather than a label (which varies by project/forge).
+        labels = []
+        branch_prefixes = list(DEFAULT_BRANCH_PREFIXES)
+    branch_prefixes = branch_prefixes or []
 
     return Config(
         github=_load_github_config(file_data),
@@ -238,6 +310,8 @@ def load_config(path: Path | None = None) -> Config:
         myprojects_path=myprojects_path,
         sort_by=sort_by,
         labels=labels,
+        branch_prefixes=branch_prefixes,
+        match_mode=match_mode,
         gitlab_instances=_load_gitlab_instances(file_data),
         gitea_instances=_load_gitea_instances(file_data),
     )

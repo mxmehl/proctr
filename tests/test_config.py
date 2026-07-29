@@ -5,9 +5,16 @@
 
 from pathlib import Path
 
+import jsonschema
 import pytest
 
-from lsrenovate.config import DEFAULT_LABELS, DEFAULT_MERGE_METHOD, DEFAULT_SORT_BY, load_config
+from lsrenovate.config import (
+    DEFAULT_BRANCH_PREFIXES,
+    DEFAULT_MATCH_MODE,
+    DEFAULT_MERGE_METHOD,
+    DEFAULT_SORT_BY,
+    load_config,
+)
 
 
 def test_config_env_var_takes_precedence_over_file(
@@ -32,24 +39,88 @@ def test_config_defaults_when_no_file_and_no_env(monkeypatch: pytest.MonkeyPatch
     assert cfg.github.token is None
     assert cfg.merge_method == DEFAULT_MERGE_METHOD
     assert cfg.sort_by == DEFAULT_SORT_BY
-    assert cfg.labels == DEFAULT_LABELS
+    assert cfg.labels == []
+    assert cfg.branch_prefixes == DEFAULT_BRANCH_PREFIXES
+    assert cfg.match_mode == DEFAULT_MATCH_MODE
 
 
 def test_config_invalid_merge_method_raises(tmp_path: Path) -> None:
-    """An unsupported merge_method value in the config file raises ValueError."""
+    """An unsupported merge_method value in the config file raises a schema ValidationError."""
     config_path = tmp_path / "config.toml"
     config_path.write_text('merge_method = "bogus"\n')
 
-    with pytest.raises(ValueError, match="Invalid merge_method"):
+    with pytest.raises(jsonschema.ValidationError):
         load_config(config_path)
 
 
-def test_config_invalid_labels_raises(tmp_path: Path) -> None:
-    """An empty labels list in the config file raises ValueError."""
+def test_config_empty_labels_is_valid(tmp_path: Path) -> None:
+    """An empty labels list is valid (disables label filtering, e.g. for branch-prefix-only)."""
     config_path = tmp_path / "config.toml"
-    config_path.write_text("labels = []\n")
+    config_path.write_text('labels = []\nbranch_prefixes = ["renovate/"]\n')
 
-    with pytest.raises(ValueError, match="Invalid labels"):
+    cfg = load_config(config_path)
+
+    assert cfg.labels == []
+    assert cfg.branch_prefixes == ["renovate/"]
+
+
+def test_config_invalid_labels_type_raises(tmp_path: Path) -> None:
+    """A non-list labels value in the config file raises a schema ValidationError."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('labels = "Renovate"\n')
+
+    with pytest.raises(jsonschema.ValidationError):
+        load_config(config_path)
+
+
+def test_config_branch_prefixes_without_labels_disables_labels(tmp_path: Path) -> None:
+    """Setting branch_prefixes without labels implies labels are disabled ([]) at that level."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('branch_prefixes = ["renovate/"]\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.labels == []
+    assert cfg.branch_prefixes == ["renovate/"]
+
+
+def test_config_labels_only_disables_default_branch_prefixes(tmp_path: Path) -> None:
+    """Setting only labels (no branch_prefixes) does not pull in the default branch prefix."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('labels = ["Renovate"]\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.labels == ["Renovate"]
+    assert cfg.branch_prefixes == []
+
+
+def test_config_invalid_match_mode_raises(tmp_path: Path) -> None:
+    """An unsupported match_mode value in the config file raises a schema ValidationError."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('match_mode = "xor"\n')
+
+    with pytest.raises(jsonschema.ValidationError):
+        load_config(config_path)
+
+
+def test_config_match_mode_override(tmp_path: Path) -> None:
+    """match_mode can be set globally and overridden per forge/instance."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('match_mode = "or"\n\n[github]\nmatch_mode = "and"\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.match_mode == "or"
+    assert cfg.github.match_mode == "and"
+
+
+def test_config_unknown_top_level_key_raises(tmp_path: Path) -> None:
+    """A typo'd/unknown top-level key raises a schema ValidationError (additionalProperties)."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('lable = ["Renovate"]\n')
+
+    with pytest.raises(jsonschema.ValidationError):
         load_config(config_path)
 
 
@@ -86,8 +157,11 @@ def test_config_env_var_takes_precedence_over_github_token_command(
     assert cfg.github.token == "env-token"
 
 
-def test_config_github_token_command_failure_falls_back_gracefully(tmp_path: Path) -> None:
+def test_config_github_token_command_failure_falls_back_gracefully(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A failing [github].token_command falls back to the plaintext token, with an error noted."""
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         "[github]\n"
@@ -103,11 +177,11 @@ def test_config_github_token_command_failure_falls_back_gracefully(tmp_path: Pat
 
 
 def test_config_invalid_github_token_command_raises(tmp_path: Path) -> None:
-    """A non-list [github].token_command value in the config file raises ValueError."""
+    """A non-list [github].token_command value in the config file raises a ValidationError."""
     config_path = tmp_path / "config.toml"
     config_path.write_text('[github]\ntoken_command = "not-a-list"\n')
 
-    with pytest.raises(ValueError, match="Invalid token_command"):
+    with pytest.raises(jsonschema.ValidationError):
         load_config(config_path)
 
 
@@ -236,3 +310,37 @@ def test_config_gitea_instance_labels_override(tmp_path: Path) -> None:
 
     assert cfg.labels == ["Renovate"]
     assert cfg.gitea_instances["gitea.example.com"].labels == ["dependencies"]
+
+
+def test_config_github_branch_prefixes_override(tmp_path: Path) -> None:
+    """[github].branch_prefixes overrides the global default for the github forge only."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('labels = ["Renovate"]\n\n[github]\nbranch_prefixes = ["renovate/"]\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.branch_prefixes == []
+    assert cfg.github.branch_prefixes == ["renovate/"]
+    assert cfg.github.labels == []
+
+
+def test_config_gitlab_instance_branch_prefixes_override(tmp_path: Path) -> None:
+    """A per-instance branch_prefixes list overrides the global default for that host only."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[gitlab."gitlab.example.com"]\nbranch_prefixes = ["renovate/"]\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.gitlab_instances["gitlab.example.com"].branch_prefixes == ["renovate/"]
+    assert cfg.gitlab_instances["gitlab.example.com"].labels == []
+
+
+def test_config_gitea_instance_branch_prefixes_override(tmp_path: Path) -> None:
+    """A per-instance branch_prefixes list overrides the global default for that host only."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('[gitea."gitea.example.com"]\nbranch_prefixes = ["renovate/"]\n')
+
+    cfg = load_config(config_path)
+
+    assert cfg.gitea_instances["gitea.example.com"].branch_prefixes == ["renovate/"]
+    assert cfg.gitea_instances["gitea.example.com"].labels == []

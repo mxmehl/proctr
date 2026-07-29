@@ -34,6 +34,8 @@ def _config(**overrides: object) -> Config:
         "myprojects_path": Path("/dev/null"),
         "sort_by": "repo",
         "labels": ["Renovate"],
+        "branch_prefixes": [],
+        "match_mode": "and",
         "gitlab_instances": {},
         "gitea_instances": {},
     }
@@ -152,3 +154,56 @@ def test_dispatcher_falls_back_to_global_labels_when_instance_labels_unset() -> 
     forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
 
     assert forge._labels == ["Renovate"]
+
+
+def test_dispatcher_uses_per_instance_branch_prefixes_over_global_default() -> None:
+    """A GitLab instance with its own branch_prefixes uses those instead of the global default."""
+    config = _config(
+        branch_prefixes=["global/"],
+        gitlab_instances={
+            "gitlab.example.com": GitLabInstanceConfig(token="x", branch_prefixes=["renovate/"])
+        },
+    )
+    dispatcher = ForgeDispatcher(config)
+
+    forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
+
+    assert forge._branch_prefixes == ["renovate/"]
+
+
+def test_dispatcher_falls_back_to_global_branch_prefixes_when_instance_unset() -> None:
+    """A GitLab instance with no branch_prefixes configured falls back to the global default."""
+    config = _config(
+        branch_prefixes=["renovate/"],
+        gitlab_instances={"gitlab.example.com": GitLabInstanceConfig(token="x")},
+    )
+    dispatcher = ForgeDispatcher(config)
+
+    forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
+
+    assert forge._branch_prefixes == ["renovate/"]
+
+
+def test_dispatcher_uses_per_instance_match_mode_over_global_default() -> None:
+    """A GitLab instance with its own match_mode uses that instead of the global default."""
+    config = _config(
+        match_mode="and",
+        gitlab_instances={"gitlab.example.com": GitLabInstanceConfig(token="x", match_mode="or")},
+    )
+    dispatcher = ForgeDispatcher(config)
+
+    forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
+
+    assert forge._match_mode == "or"
+
+
+def test_dispatcher_raises_when_labels_and_branch_prefixes_both_disabled() -> None:
+    """An instance with labels explicitly disabled and no branch_prefixes raises."""
+    config = _config(
+        labels=["Renovate"],
+        gitlab_instances={"gitlab.example.com": GitLabInstanceConfig(token="x", labels=[])},
+    )
+    dispatcher = ForgeDispatcher(config)
+
+    with pytest.raises(ValueError, match="No labels or branch_prefixes configured"):
+        dispatcher(_repo("gitlab", "gitlab.example.com"))

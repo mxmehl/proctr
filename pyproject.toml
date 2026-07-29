@@ -20,7 +20,12 @@ keywords = [
 ]
 authors = [{ name = "Max Mehl", email = "mail@mehl.mx" }]
 requires-python = ">=3.11"
-dependencies = ["platformdirs==4.11.0", "pyyaml==6.0.3", "textual==0.89.1"]
+dependencies = [
+    "jsonschema==4.26.0",
+    "platformdirs==4.11.0",
+    "pyyaml==6.0.3",
+    "textual==0.89.1",
+]
 
 [project.urls]
 Repository = "https://github.com/mxmehl/lsrenovate"
