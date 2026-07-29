@@ -6,6 +6,7 @@ path = [
   ".release-please-manifest.json",
   "CHANGELOG.md",
   "uv.lock",
+  "meta/*.jpg",
 ]
 SPDX-FileCopyrightText = "2026 Max Mehl <https://mehl.mx>"
 SPDX-License-Identifier = "CC0-1.0"

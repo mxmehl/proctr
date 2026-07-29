@@ -12,6 +12,8 @@
 
 lsrenovate is a terminal UI for triaging open Renovate pull requests across many GitHub, GitLab, and Gitea repositories at once. It reads a simple YAML project registry, fetches matching PRs/MRs concurrently, and lets you review, merge, and jump into repos without leaving the terminal.
 
+![Screenshot of lsrenovate showing a table of Renovate PRs across multiple repos, with color-coded mergeable state, pipeline status, and review decision.](meta/screen1.jpg)
+
 ## Columns
 
 The table shows a few independent signals per PR/MR, color-coded where the forge can tell reliably:
@@ -102,6 +104,12 @@ uv sync --no-dev
 
    ```sh
    lsrenovate
+   ```
+
+   Or preview the UI with canned sample data (no config/credentials/repos needed), e.g. for screenshots:
+
+   ```sh
+   lsrenovate --demo
    ```
 
 ## Configuration
