@@ -5,6 +5,7 @@
 name = "proctr"
 version = "1.0.1"
 description = "Terminal UI for triaging open pull/merge requests across multiple repositories and forges"
+authors = [{ name = "Max Mehl", email = "mail@mehl.mx" }]
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
@@ -19,7 +20,18 @@ keywords = [
     "dependency",
     "update",
 ]
-authors = [{ name = "Max Mehl", email = "mail@mehl.mx" }]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 requires-python = ">=3.11"
 dependencies = [
     "jsonschema==4.26.0",
