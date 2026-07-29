@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from lsrenovate.forges.base import (
+    ApproveResult,
     Forge,
     MergeResult,
     PullRequest,
@@ -196,6 +197,29 @@ class GitLabForge(Forge):
             )
         message = result.stderr.strip() or result.stdout.strip() or "glab mr merge failed"
         return MergeResult(pull_request=pull_request, success=False, message=message)
+
+    def approve_pr(self, pull_request: PullRequest) -> ApproveResult:
+        """Approve a single MR via glab mr approve, never raising."""
+        result = subprocess.run(  # noqa: S603
+            [
+                GLAB_EXECUTABLE,
+                "mr",
+                "approve",
+                str(pull_request.number),
+                "-R",
+                pull_request.repo.full_name,
+            ],
+            capture_output=True,
+            text=True,
+            env=self._env(),
+            check=False,
+        )
+        if result.returncode == 0:
+            return ApproveResult(
+                pull_request=pull_request, success=True, message=result.stdout.strip()
+            )
+        message = result.stderr.strip() or result.stdout.strip() or "glab mr approve failed"
+        return ApproveResult(pull_request=pull_request, success=False, message=message)
 
     def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
         """Check out an MR's branch via glab mr checkout -f, force-resetting any stale branch.

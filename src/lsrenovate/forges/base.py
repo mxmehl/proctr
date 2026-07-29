@@ -31,6 +31,8 @@ class PullRequest:
     for coloring: True/False when the forge can tell us definitively, None
     when it can't (e.g. Gitea's `mergeable` flag is known to be unreliable
     upstream, so it never contributes a positive True there).
+    `review_decision` is a raw review-state string; only GitHub populates
+    it today (its `reviewDecision` field), other forges leave it "".
     """
 
     repo: Repo
@@ -42,11 +44,21 @@ class PullRequest:
     mergeable: str
     pipeline_status: str
     merge_ready: bool | None = None
+    review_decision: str = ""
 
 
 @dataclass(frozen=True)
 class MergeResult:
     """Outcome of a single merge attempt."""
+
+    pull_request: PullRequest
+    success: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class ApproveResult:
+    """Outcome of a single approve attempt."""
 
     pull_request: PullRequest
     success: bool
@@ -115,6 +127,10 @@ class Forge(ABC):
     @abstractmethod
     def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:
         """Attempt to merge a single PR, never raising on failure."""
+
+    @abstractmethod
+    def approve_pr(self, pull_request: PullRequest) -> ApproveResult:
+        """Approve a single PR, never raising on failure."""
 
     @abstractmethod
     def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:

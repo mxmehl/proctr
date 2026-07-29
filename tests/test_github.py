@@ -33,6 +33,7 @@ FAKE_PR_JSON = [
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "CLEAN",
         "headRefName": "renovate/foo-2.x",
+        "reviewDecision": "",
     }
 ]
 
@@ -73,6 +74,18 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     assert prs[0].number == 42
     assert prs[0].title == "Update dependency foo to v2"
     assert prs[0].mergeable == "MERGEABLE"
+    assert prs[0].review_decision == ""
+
+
+def test_list_renovate_prs_parses_review_decision() -> None:
+    """A reviewDecision (e.g. CHANGES_REQUESTED) is parsed onto PullRequest.review_decision."""
+    forge = GitHubForge(github_token=None)
+    pr_json = [{**FAKE_PR_JSON[0], "reviewDecision": "CHANGES_REQUESTED"}]
+    fake_result = MagicMock(stdout=json.dumps(pr_json))
+    with patch("subprocess.run", return_value=fake_result):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == "CHANGES_REQUESTED"
 
 
 def test_list_prs_with_multiple_configured_labels() -> None:
@@ -161,6 +174,34 @@ def test_merge_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
 
     assert merge_result.success is False
     assert "merge conflict" in merge_result.message
+
+
+def test_approve_pr_success(pull_request: PullRequest) -> None:
+    """A successful gh pr review --approve invocation returns a successful ApproveResult."""
+    forge = GitHubForge(github_token=None)
+    fake_ok = MagicMock(returncode=0, stdout="Approved\n", stderr="")
+
+    with patch("subprocess.run", return_value=fake_ok) as mock_run:
+        approve_result = forge.approve_pr(pull_request)
+
+    cmd = mock_run.call_args.args[0]
+    assert Path(cmd[0]).name == "gh"
+    assert cmd[1:3] == ["pr", "review"]
+    assert cmd[3] == "42"
+    assert "--approve" in cmd
+    assert approve_result.success is True
+
+
+def test_approve_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
+    """A failing gh pr review --approve invocation returns a failed ApproveResult, not raise."""
+    forge = GitHubForge(github_token=None)
+    fake_fail = MagicMock(returncode=1, stdout="", stderr="can not approve your own PR")
+
+    with patch("subprocess.run", return_value=fake_fail):
+        approve_result = forge.approve_pr(pull_request)
+
+    assert approve_result.success is False
+    assert "own PR" in approve_result.message
 
 
 def test_checkout_pr_uses_force_flag_and_repo_cwd(pull_request: PullRequest) -> None:

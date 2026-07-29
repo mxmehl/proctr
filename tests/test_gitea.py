@@ -35,6 +35,7 @@ FAKE_PR_JSON = [
         "labels": "maintenance,Renovate",
         "mergeable": "false",
         "head": "renovate/postgres-18.x",
+        "base": "main",
     },
     {
         "index": "285",
@@ -45,10 +46,17 @@ FAKE_PR_JSON = [
         "labels": "",
         "mergeable": "false",
         "head": "quoted-selectors",
+        "base": "main",
     },
 ]
 
 FAKE_STATUS_JSON = {"state": "success"}
+# No branch protection configured by default, so review_decision resolves to ""
+# without needing a reviews call for most tests (required_approvals=0 short-circuits
+# _review_decision only after checking for REQUEST_CHANGES, so an empty reviews list
+# is still fetched once per matched PR).
+FAKE_NO_BRANCH_PROTECTIONS_JSON: list = []
+FAKE_NO_REVIEWS_JSON: list = []
 
 
 @pytest.fixture
@@ -71,8 +79,20 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     """Tea pulls list is invoked with --repo/--login/--fields, and JSON is parsed."""
     forge = GiteaForge(login="git.fsfe.org")
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(
+        returncode=0, stdout=json.dumps([{"branch_name": "main", "required_approvals": 1}])
+    )
     status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
-    with patch("subprocess.run", side_effect=[list_result, status_result]) as mock_run:
+    reviews_result = MagicMock(
+        returncode=0,
+        stdout=json.dumps(
+            [{"state": "APPROVED", "official": True, "dismissed": False, "stale": False}]
+        ),
+    )
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ) as mock_run:
         prs = forge.list_renovate_prs(REPO)
 
     cmd = mock_run.call_args_list[0].args[0]
@@ -88,13 +108,22 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     assert prs[0].mergeable == "false"
     assert prs[0].pipeline_status == "success"
     assert prs[0].merge_ready is False  # mergeable=false is trusted as a real conflict signal
+    assert prs[0].review_decision == "APPROVED"
 
-    status_cmd = mock_run.call_args_list[1].args[0]
+    protections_cmd = mock_run.call_args_list[1].args[0]
+    assert protections_cmd[1] == "api"
+    assert protections_cmd[2] == "/repos/fsfe-system-hackers/vpn-server/branch_protections"
+
+    status_cmd = mock_run.call_args_list[2].args[0]
     assert status_cmd[1] == "api"
     assert (
         status_cmd[2]
         == "/repos/fsfe-system-hackers/vpn-server/commits/renovate/postgres-18.x/status"
     )
+
+    reviews_cmd = mock_run.call_args_list[3].args[0]
+    assert reviews_cmd[1] == "api"
+    assert reviews_cmd[2] == "/repos/fsfe-system-hackers/vpn-server/pulls/427/reviews"
 
 
 def test_merge_ready_is_true_when_mergeable_and_pipeline_passing() -> None:
@@ -107,8 +136,13 @@ def test_merge_ready_is_true_when_mergeable_and_pipeline_passing() -> None:
     forge = GiteaForge(login="git.fsfe.org")
     mergeable_pr = [{**FAKE_PR_JSON[0], "mergeable": "true"}]
     list_result = MagicMock(stdout=json.dumps(mergeable_pr))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
     status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
-    with patch("subprocess.run", side_effect=[list_result, status_result]):
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
         prs = forge.list_renovate_prs(REPO)
 
     assert prs[0].merge_ready is True
@@ -118,8 +152,13 @@ def test_merge_ready_is_false_when_not_mergeable() -> None:
     """mergeable=false is not ready, even with a passing pipeline."""
     forge = GiteaForge(login="git.fsfe.org")
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
     status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
-    with patch("subprocess.run", side_effect=[list_result, status_result]):
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
         prs = forge.list_renovate_prs(REPO)
 
     assert prs[0].merge_ready is False
@@ -130,20 +169,173 @@ def test_merge_ready_is_false_when_pipeline_failed() -> None:
     forge = GiteaForge(login="git.fsfe.org")
     mergeable_pr = [{**FAKE_PR_JSON[0], "mergeable": "true"}]
     list_result = MagicMock(stdout=json.dumps(mergeable_pr))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
     status_result = MagicMock(returncode=0, stdout=json.dumps({"state": "failure"}))
-    with patch("subprocess.run", side_effect=[list_result, status_result]):
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
         prs = forge.list_renovate_prs(REPO)
 
     assert prs[0].pipeline_status == "failure"
     assert prs[0].merge_ready is False
 
 
+def test_review_decision_approved_when_enough_official_approvals() -> None:
+    """A required_approvals count met by official, non-dismissed reviews yields APPROVED."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(
+        returncode=0, stdout=json.dumps([{"branch_name": "main", "required_approvals": 1}])
+    )
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(
+        returncode=0,
+        stdout=json.dumps(
+            [{"state": "APPROVED", "official": True, "dismissed": False, "stale": False}]
+        ),
+    )
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == "APPROVED"
+
+
+def test_review_decision_review_required_when_not_enough_approvals() -> None:
+    """A required_approvals count not yet met by approvals yields REVIEW_REQUIRED."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(
+        returncode=0, stdout=json.dumps([{"branch_name": "main", "required_approvals": 1}])
+    )
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == "REVIEW_REQUIRED"
+
+
+def test_review_decision_changes_requested_overrides_approval_count() -> None:
+    """An active official REQUEST_CHANGES review wins over an unmet or met approval count."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(
+        returncode=0, stdout=json.dumps([{"branch_name": "main", "required_approvals": 1}])
+    )
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(
+        returncode=0,
+        stdout=json.dumps(
+            [{"state": "REQUEST_CHANGES", "official": True, "dismissed": False, "stale": False}]
+        ),
+    )
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == "CHANGES_REQUESTED"
+
+
+def test_review_decision_ignores_dismissed_and_stale_reviews() -> None:
+    """Dismissed or stale reviews don't count toward REQUEST_CHANGES or approval totals."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(
+        returncode=0, stdout=json.dumps([{"branch_name": "main", "required_approvals": 1}])
+    )
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(
+        returncode=0,
+        stdout=json.dumps(
+            [
+                {"state": "REQUEST_CHANGES", "official": True, "dismissed": True, "stale": False},
+                {"state": "APPROVED", "official": True, "dismissed": False, "stale": True},
+            ]
+        ),
+    )
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == "REVIEW_REQUIRED"
+
+
+def test_review_decision_empty_when_no_branch_protection() -> None:
+    """No required-approval rule for the PR's base branch yields an empty review_decision."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == ""
+
+
+def test_review_decision_approved_when_no_branch_protection_but_has_approval() -> None:
+    """An approval still reports APPROVED even without a required-approval rule."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(
+        returncode=0,
+        stdout=json.dumps(
+            [{"state": "APPROVED", "official": True, "dismissed": False, "stale": False}]
+        ),
+    )
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == "APPROVED"
+
+
+def test_review_decision_falls_back_to_empty_on_api_failures() -> None:
+    """A failing branch_protections or reviews API call is treated as no requirement, not raised."""
+    forge = GiteaForge(login="git.fsfe.org")
+    list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=1, stdout="", stderr="permission denied")
+    status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
+    reviews_result = MagicMock(returncode=1, stdout="", stderr="permission denied")
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
+        prs = forge.list_renovate_prs(REPO)
+
+    assert prs[0].review_decision == ""
+
+
 def test_label_filtering_requires_all_configured_labels() -> None:
     """A PR must carry all configured labels (AND semantics), not just one."""
     forge = GiteaForge(login="git.fsfe.org", labels=["Renovate", "maintenance"])
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
     status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
-    with patch("subprocess.run", side_effect=[list_result, status_result]):
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
         prs = forge.list_renovate_prs(REPO)
 
     assert len(prs) == 1
@@ -164,8 +356,13 @@ def test_branch_prefix_only_mode_matches_by_head_field() -> None:
     """With labels=[], PRs are matched solely by the head branch field's prefix."""
     forge = GiteaForge(login="git.fsfe.org", labels=[], branch_prefixes=["renovate/"])
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
     status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
-    with patch("subprocess.run", side_effect=[list_result, status_result]):
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[list_result, protections_result, status_result, reviews_result],
+    ):
         prs = forge.list_renovate_prs(REPO)
 
     assert [pr.number for pr in prs] == [427]
@@ -197,8 +394,20 @@ def test_or_mode_matches_either_label_or_branch_prefix() -> None:
         match_mode="or",
     )
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
+    protections_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_BRANCH_PROTECTIONS_JSON))
     status_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_STATUS_JSON))
-    with patch("subprocess.run", side_effect=[list_result, status_result, status_result]):
+    reviews_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_NO_REVIEWS_JSON))
+    with patch(
+        "subprocess.run",
+        side_effect=[
+            list_result,
+            protections_result,
+            status_result,
+            reviews_result,
+            status_result,
+            reviews_result,
+        ],
+    ):
         prs = forge.list_renovate_prs(REPO)
 
     assert {pr.number for pr in prs} == {427, 285}
@@ -241,6 +450,33 @@ def test_merge_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
 
     assert merge_result.success is False
     assert "merge conflict" in merge_result.message
+
+
+def test_approve_pr_success(pull_request: PullRequest) -> None:
+    """A successful tea pulls approve invocation returns a successful ApproveResult."""
+    forge = GiteaForge(login="git.fsfe.org")
+    fake_ok = MagicMock(returncode=0, stdout="https://.../issuecomment-1\n", stderr="")
+
+    with patch("subprocess.run", return_value=fake_ok) as mock_run:
+        approve_result = forge.approve_pr(pull_request)
+
+    cmd = mock_run.call_args.args[0]
+    assert Path(cmd[0]).name == "tea"
+    assert cmd[1:3] == ["pulls", "approve"]
+    assert cmd[3] == "427"
+    assert approve_result.success is True
+
+
+def test_approve_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
+    """A failing tea pulls approve invocation returns a failed ApproveResult, not raise."""
+    forge = GiteaForge(login="git.fsfe.org")
+    fake_fail = MagicMock(returncode=1, stdout="", stderr="reviewer required")
+
+    with patch("subprocess.run", return_value=fake_fail):
+        approve_result = forge.approve_pr(pull_request)
+
+    assert approve_result.success is False
+    assert "reviewer required" in approve_result.message
 
 
 def test_checkout_pr_resolves_branch_checks_out_and_rebranches(pull_request: PullRequest) -> None:

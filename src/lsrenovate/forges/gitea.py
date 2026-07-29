@@ -20,6 +20,13 @@ asymmetric risk that justifies distrusting a forge's signal (as with
 GitLab's pipeline status) doesn't apply here. Pipeline/CI status is
 fetched separately via `tea api .../commits/{ref}/status` (the combined
 commit status endpoint) and also feeds into merge_ready.
+
+`review_decision` (unlike GitHub, which exposes it as one field) is
+derived from two extra API calls: the repo's branch protection rules
+(for the required-approval count on the PR's base branch, fetched once
+per repo) and each PR's reviews (fetched once per PR). Only official,
+non-dismissed, non-stale reviews count, mirroring what Gitea itself uses
+to decide mergeability.
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -34,6 +41,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from lsrenovate.forges.base import (
+    ApproveResult,
     Forge,
     MergeResult,
     PullRequest,
@@ -47,10 +55,14 @@ if TYPE_CHECKING:
 
 TEA_EXECUTABLE = shutil.which("tea") or "tea"
 GIT_EXECUTABLE = shutil.which("git") or "git"
-LIST_FIELDS = "index,title,url,created,updated,labels,mergeable,head"
+LIST_FIELDS = "index,title,url,created,updated,labels,mergeable,head,base"
 MERGE_STYLES = {"squash", "merge", "rebase", "rebase-merge"}
 NO_PIPELINE = "N/A"
 FAILED_COMBINED_STATUSES = {"error", "failure"}
+REVIEW_REQUEST_CHANGES = "REQUEST_CHANGES"
+REVIEW_APPROVED = "APPROVED"
+REVIEW_REQUIRED = "REVIEW_REQUIRED"
+REVIEW_CHANGES_REQUESTED = "CHANGES_REQUESTED"
 
 
 class GiteaForge(Forge):
@@ -97,6 +109,7 @@ class GiteaForge(Forge):
         raw_prs = json.loads(result.stdout)
         labels_enabled = bool(self._labels)
         branch_enabled = bool(self._branch_prefixes)
+        required_approvals = self._required_approvals(repo)
         prs = []
         for pr in raw_prs:
             matched = combine_match(
@@ -122,6 +135,9 @@ class GiteaForge(Forge):
                     pipeline_status=combined_status or NO_PIPELINE,
                     merge_ready=mergeable == "true"
                     and combined_status not in FAILED_COMBINED_STATUSES,
+                    review_decision=self._review_decision(
+                        repo, int(pr["index"]), pr["base"], required_approvals
+                    ),
                 )
             )
         return prs
@@ -129,6 +145,93 @@ class GiteaForge(Forge):
     def _has_all_labels(self, labels_field: str) -> bool:
         pr_labels = {label.strip() for label in labels_field.split(",") if label.strip()}
         return all(label in pr_labels for label in self._labels)
+
+    def _required_approvals(self, repo: Repo) -> dict[str, int]:
+        """Fetch each protected branch's required-approval count via the Gitea API.
+
+        Returns {} on any failure (e.g. no permission to view protection
+        rules), which `_review_decision` treats as "no review requirement
+        configured" — the same tolerance already applied to Gitea's
+        `mergeable` field: a wrong/missing signal here only affects a
+        display column, never gates an actual merge attempt.
+        """
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "api",
+                f"/repos/{repo.full_name}/branch_protections",
+                "--repo",
+                repo.full_name,
+                "--login",
+                self._login,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {}
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return {}
+        # ponytail: exact branch_name match only. Gitea allows glob patterns
+        # (e.g. "release/*") in a protection rule's branch_name, not handled
+        # here — upgrade path is fnmatch against the PR's base branch if a
+        # real repo ever needs it.
+        return {rule["branch_name"]: rule.get("required_approvals", 0) for rule in data}
+
+    def _review_decision(
+        self, repo: Repo, index: int, base_branch: str, required_approvals: dict[str, int]
+    ) -> str:
+        """Compute a GitHub-reviewDecision-shaped string from reviews + branch protection.
+
+        Gitea has no single reviewDecision field, so this combines the PR's
+        reviews (state per reviewer) with the repo's required-approval
+        count for the PR's base branch. Only official, non-dismissed,
+        non-stale reviews count — the same fields Gitea itself uses to
+        decide mergeability. An unprotected branch with at least one
+        approval still reports "APPROVED" (an actual approval is a more
+        useful signal than a blank cell); only a branch with neither a
+        required-approval rule nor any approval reports "".
+        """
+        active_reviews = [
+            review
+            for review in self._reviews(repo, index)
+            if review.get("official") and not review.get("dismissed") and not review.get("stale")
+        ]
+        if any(review.get("state") == REVIEW_REQUEST_CHANGES for review in active_reviews):
+            return REVIEW_CHANGES_REQUESTED
+        approved_count = sum(
+            1 for review in active_reviews if review.get("state") == REVIEW_APPROVED
+        )
+        required = required_approvals.get(base_branch, 0)
+        if required > 0:
+            return REVIEW_APPROVED if approved_count >= required else REVIEW_REQUIRED
+        return REVIEW_APPROVED if approved_count > 0 else ""
+
+    def _reviews(self, repo: Repo, index: int) -> list[dict]:
+        """Fetch a PR's reviews via the Gitea API. Returns [] on any failure, never raises."""
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "api",
+                f"/repos/{repo.full_name}/pulls/{index}/reviews",
+                "--repo",
+                repo.full_name,
+                "--login",
+                self._login,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            return []
 
     def _combined_status(self, repo: Repo, ref: str) -> str | None:
         """Fetch the combined commit status for a PR's head ref via the Gitea API.
@@ -184,6 +287,30 @@ class GiteaForge(Forge):
             )
         message = result.stderr.strip() or result.stdout.strip() or "tea pulls merge failed"
         return MergeResult(pull_request=pull_request, success=False, message=message)
+
+    def approve_pr(self, pull_request: PullRequest) -> ApproveResult:
+        """Approve a single PR via tea pulls approve, never raising."""
+        result = subprocess.run(  # noqa: S603
+            [
+                TEA_EXECUTABLE,
+                "pulls",
+                "approve",
+                str(pull_request.number),
+                "--repo",
+                pull_request.repo.full_name,
+                "--login",
+                self._login,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return ApproveResult(
+                pull_request=pull_request, success=True, message=result.stdout.strip()
+            )
+        message = result.stderr.strip() or result.stdout.strip() or "tea pulls approve failed"
+        return ApproveResult(pull_request=pull_request, success=False, message=message)
 
     def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
         """Check out a PR's branch, force-resetting it to the current remote state.
