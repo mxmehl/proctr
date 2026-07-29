@@ -3,7 +3,7 @@
   SPDX-License-Identifier: CC0-1.0
 -->
 
-# proctr
+# PRoctr - Doctor/Triage for your open Pull Requests
 
 [![Test suites](https://github.com/mxmehl/proctr/actions/workflows/test.yaml/badge.svg)](https://github.com/mxmehl/proctr/actions/workflows/test.yaml)
 [![REUSE status](https://api.reuse.software/badge/github.com/mxmehl/proctr)](https://api.reuse.software/info/github.com/mxmehl/proctr)
