@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/mxmehl/proctr/compare/v1.0.0...v1.0.1) (2026-07-29)
+
+
+### 📚 Documentation
+
+* improve README and forges instructions ([ad8d54f](https://github.com/mxmehl/proctr/commit/ad8d54ff189c2370efc014c926a23e2413c320d3))
+
 ## [1.0.0](https://github.com/mxmehl/proctr/compare/v0.3.1...v1.0.0) (2026-07-29)
 
 
