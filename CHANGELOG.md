@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.1.0](https://github.com/mxmehl/proctr/compare/v1.0.1...v1.1.0) (2026-07-29)
+
+
+### 🚀 New Features
+
+* allow to freely define root path for locally checked out repositories ([b775359](https://github.com/mxmehl/proctr/commit/b775359d6ee8b92f1cc7d5ad8ef60e9a93b110e2))
+
+
+### ⚙️ Chores
+
+* adapt project title ([fdf7d86](https://github.com/mxmehl/proctr/commit/fdf7d86bc77b4a7db009e7e010270dd9b75fbb91))
+* add python classifiers ([d333cd5](https://github.com/mxmehl/proctr/commit/d333cd5a52ab840d116a4ec614da017c9e404e33))
+
 ## [1.0.1](https://github.com/mxmehl/proctr/compare/v1.0.0...v1.0.1) (2026-07-29)
 
 
