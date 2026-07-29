@@ -77,6 +77,7 @@ uv sync --no-dev
 1. **Create a project registry** — a YAML file listing the repos to monitor:
 
     ```yaml
+    root_path: ~/Git  # optional; overrides the default local clone root. Default: ~/Git
     myprojects:
       github:
         my-tool: # Expected local path: ~/Git/github/my-tool
@@ -96,7 +97,7 @@ uv sync --no-dev
           url: https://company.example.com/team/internal-service
     ```
 
-   Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. `forge` must be `github`, `gitlab`, or `gitea`. If your local clones don't follow that convention, set an optional `path` on the project to use an explicit local path instead, e.g. `path: ~/code/my-tool`.
+   Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `<root_path>/<group>/<project>`, used by the "open shell" action. `root_path` defaults to `~/Git` if omitted. `forge` must be `github`, `gitlab`, or `gitea`. If your local clones don't follow that convention, set an optional `path` on the project to use an explicit local path instead, e.g. `path: ~/code/my-tool`.
 
    **Save this file somewhere** (e.g. `~/myprojects.yaml`) and point to it in your config file (see below).
 

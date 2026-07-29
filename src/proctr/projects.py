@@ -1,11 +1,13 @@
 """Parsing of myprojects.yaml into Repo records.
 
-Local clone path convention: ~/Git/<group>/<project>, where <group> and
-<project> are the top-level/second-level keys under `myprojects` in the
-YAML file — these are a local naming convention and may differ from the
-repo's actual slug on the forge, which is always derived from the URL.
-A project entry may set an optional `path` key to override this
-convention with an explicit local clone path instead.
+Local clone path convention: <root_path>/<group>/<project>, where <group>
+and <project> are the top-level/second-level keys under `myprojects` in
+the YAML file — these are a local naming convention and may differ from
+the repo's actual slug on the forge, which is always derived from the
+URL. `root_path` is an optional top-level key in the YAML file (sibling
+of `myprojects`), defaulting to ~/Git. A project entry may set an
+optional `path` key to override this convention with an explicit local
+clone path instead.
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -19,7 +21,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-GIT_ROOT = Path("~/Git").expanduser()
+DEFAULT_ROOT_PATH = Path("~/Git").expanduser()
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,7 @@ def load_repos(myprojects_path: Path, *, forge: str | None = None) -> list[Repo]
     """
     data = yaml.safe_load(myprojects_path.read_text())
     groups = data.get("myprojects", {})
+    root_path = Path(data.get("root_path", DEFAULT_ROOT_PATH)).expanduser()
 
     repos: list[Repo] = []
     for group, projects in groups.items():
@@ -77,7 +80,7 @@ def load_repos(myprojects_path: Path, *, forge: str | None = None) -> list[Repo]
                 continue
             url = meta.get("url", "")
             path = meta.get("path")
-            local_path = Path(path).expanduser() if path else GIT_ROOT / group / name
+            local_path = Path(path).expanduser() if path else root_path / group / name
             repos.append(
                 Repo(
                     group=group,

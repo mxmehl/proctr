@@ -82,6 +82,24 @@ def test_load_repos_path_overrides_local_path_convention(tmp_path: Path) -> None
     assert repos[0].local_path == Path("~/code/my-tool").expanduser()
 
 
+def test_load_repos_root_path_overrides_default(tmp_path: Path) -> None:
+    """A top-level `root_path` key overrides the default ~/Git clone root."""
+    fixture_path = tmp_path / "myprojects.yaml"
+    fixture_path.write_text(
+        "root_path: ~/Code\n"
+        "myprojects:\n"
+        "  github:\n"
+        "    my-tool:\n"
+        "      forge: github\n"
+        "      url: https://github.com/mxmehl/my-tool\n"
+    )
+
+    repos = load_repos(fixture_path, forge="github")
+
+    assert len(repos) == 1
+    assert repos[0].local_path == Path("~/Code/github/my-tool").expanduser()
+
+
 def test_full_name_uses_url_slug_not_yaml_key_when_they_differ(tmp_path: Path) -> None:
     """full_name must reflect the URL's real repo slug even if the myprojects.yaml key differs.
 
