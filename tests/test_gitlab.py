@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lsrenovate.forges.base import PullRequest
-from lsrenovate.forges.gitlab import GitLabForge
-from lsrenovate.projects import Repo
+from proctr.forges.base import PullRequest
+from proctr.forges.gitlab import GitLabForge
+from proctr.projects import Repo
 
 REPO = Repo(
     group="db",
@@ -52,13 +52,13 @@ def pull_request() -> PullRequest:
     )
 
 
-def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
+def test_list_matching_prs_builds_correct_command_and_parses_json() -> None:
     """Glab mr list is invoked with the right host/token/flags, and JSON is parsed."""
     forge = GitLabForge(host="gitlab.example.com", token="secret-token")
     list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
     view_result = MagicMock(stdout=json.dumps({"head_pipeline": {"status": "success"}}))
     with patch("subprocess.run", side_effect=[list_result, view_result]) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     args, kwargs = mock_run.call_args_list[0]
     cmd = args[0]
@@ -91,7 +91,7 @@ def test_list_prs_not_ready_when_conflicting() -> None:
     view_result = MagicMock(stdout=json.dumps({"head_pipeline": {"status": "success"}}))
 
     with patch("subprocess.run", side_effect=[list_result, view_result]):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].merge_ready is False
     assert prs[0].mergeable == "CONFLICTING"
@@ -110,7 +110,7 @@ def test_list_prs_not_ready_when_pipeline_failed() -> None:
     view_result = MagicMock(stdout=json.dumps({"head_pipeline": {"status": "failed"}}))
 
     with patch("subprocess.run", side_effect=[list_result, view_result]):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].mergeable == "MERGEABLE"  # no conflicts
     assert prs[0].pipeline_status == "failed"  # but the pipeline failed
@@ -124,7 +124,7 @@ def test_list_prs_ready_when_no_pipeline_exists() -> None:
     view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
 
     with patch("subprocess.run", side_effect=[list_result, view_result]):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].pipeline_status == "N/A"
     assert prs[0].merge_ready is True
@@ -135,7 +135,7 @@ def test_list_prs_with_multiple_configured_labels() -> None:
     forge = GitLabForge(host="gitlab.example.com", token=None, labels=["Renovate", "dependencies"])
     fake_result = MagicMock(stdout=json.dumps([]))
     with patch("subprocess.run", return_value=fake_result) as mock_run:
-        forge.list_renovate_prs(REPO)
+        forge.list_matching_prs(REPO)
 
     cmd = mock_run.call_args.args[0]
     label_positions = [i for i, arg in enumerate(cmd) if arg == "--label"]
@@ -151,7 +151,7 @@ def test_branch_prefix_only_mode_disables_label_flags() -> None:
     list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
     view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
     with patch("subprocess.run", side_effect=[list_result, view_result]) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     cmd = mock_run.call_args_list[0].args[0]
     assert "--label" not in cmd
@@ -169,7 +169,7 @@ def test_and_mode_narrows_label_filtered_results_by_branch_prefix() -> None:
     )
     list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
     with patch("subprocess.run", return_value=list_result) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert mock_run.call_count == 1
     assert "--label" in mock_run.call_args_list[0].args[0]
@@ -203,7 +203,7 @@ def test_or_mode_unions_label_and_branch_matches_with_two_queries() -> None:
             view_result,
         ],
     ) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert mock_run.call_count == 5
     assert "--label" in mock_run.call_args_list[0].args[0]

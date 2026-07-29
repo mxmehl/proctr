@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
-from lsrenovate.config import load_config
-from lsrenovate.projects import load_repos
+from proctr.config import load_config
+from proctr.projects import load_repos
 
 
 def main() -> None:

@@ -3,16 +3,16 @@
   SPDX-License-Identifier: CC0-1.0
 -->
 
-# lsrenovate
+# proctr
 
-[![Test suites](https://github.com/mxmehl/lsrenovate/actions/workflows/test.yaml/badge.svg)](https://github.com/mxmehl/lsrenovate/actions/workflows/test.yaml)
-[![REUSE status](https://api.reuse.software/badge/github.com/mxmehl/lsrenovate)](https://api.reuse.software/info/github.com/mxmehl/lsrenovate)
-[![The latest version can be found on PyPI.](https://img.shields.io/pypi/v/lsrenovate.svg)](https://pypi.org/project/lsrenovate/)
-[![Information on what versions of Python are supported can be found on PyPI.](https://img.shields.io/pypi/pyversions/lsrenovate.svg)](https://pypi.org/project/lsrenovate/)
+[![Test suites](https://github.com/mxmehl/proctr/actions/workflows/test.yaml/badge.svg)](https://github.com/mxmehl/proctr/actions/workflows/test.yaml)
+[![REUSE status](https://api.reuse.software/badge/github.com/mxmehl/proctr)](https://api.reuse.software/info/github.com/mxmehl/proctr)
+[![The latest version can be found on PyPI.](https://img.shields.io/pypi/v/proctr.svg)](https://pypi.org/project/proctr/)
+[![Information on what versions of Python are supported can be found on PyPI.](https://img.shields.io/pypi/pyversions/proctr.svg)](https://pypi.org/project/proctr/)
 
-lsrenovate is a terminal UI for triaging open Renovate pull requests across many GitHub, GitLab, and Gitea repositories at once. It reads a simple YAML project registry, fetches matching PRs/MRs concurrently, and lets you review, merge, and jump into repos without leaving the terminal.
+proctr is a terminal UI for triaging open pull/merge requests across many GitHub, GitLab, and Gitea repositories at once. Its prime use case is managing automated dependency-update PRs (Renovate, Dependabot, or similar bots), but it works for any PR/MR matched by a label and/or branch-name prefix — including hand-written ones, if you follow a consistent convention. It reads a simple YAML project registry, fetches matching PRs/MRs concurrently, and lets you review, merge, and jump into repos without leaving the terminal.
 
-![Screenshot of lsrenovate showing a table of Renovate PRs across multiple repos, with color-coded mergeable state, pipeline status, and review decision.](meta/screen1.jpg)
+![Screenshot of proctr showing a table of matching PRs across multiple repos, with color-coded mergeable state, pipeline status, and review decision.](meta/screen1.jpg)
 
 ## Columns
 
@@ -26,7 +26,7 @@ A PR is only color-coded ready when Mergeable and Pipeline are both favorable; s
 
 ## Features
 
-- **Cross-repo overview** — one table showing every open Renovate (or custom-labeled) PR/MR across all your repos, with age, mergeable state, pipeline status, and (on GitHub) review decision color-coded at a glance (where the forge can tell reliably — see the Gitea note below).
+- **Cross-repo overview** — one table showing every open PR/MR matching your configured label(s) and/or branch prefix(es) (e.g. Renovate, Dependabot, or a custom convention) across all your repos, with age, mergeable state, pipeline status, and (on GitHub) review decision color-coded at a glance (where the forge can tell reliably — see the Gitea note below).
 - **Multi-forge, multi-instance** — mix GitHub, GitLab, and Gitea repos in one registry, including multiple self-hosted GitLab or Gitea instances at once, each with its own credentials.
 - **Multi-select merge** — tick PRs with `space` and merge them all with `m`; failures don't block the rest, and you get a summary afterward.
 - **Multi-select approve** — tick PRs with `space` and approve them all with `a`; failures don't block the rest, and you get a summary afterward.
@@ -39,7 +39,7 @@ A PR is only color-coded ready when Mergeable and Pipeline are both favorable; s
 - Python 3.11+
 - One CLI per forge you actually use:
   - [GitHub CLI (`gh`)](https://cli.github.com/), authenticated or provided a token via config/env (see below)
-  - [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli), no pre-login required — lsrenovate injects the token per call (see below)
+  - [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli), no pre-login required — proctr injects the token per call (see below)
   - [Gitea CLI (`tea`)](https://gitea.com/gitea/tea), **must be pre-authenticated yourself** via `tea login add` (see the Gitea note below)
 
 ## Installation
@@ -49,26 +49,26 @@ Requires at least Python 3.11.
 With [pipx](https://pipx.pypa.io/):
 
 ```bash
-pipx install lsrenovate
+pipx install proctr
 ```
 
 With [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv tool install lsrenovate
+uv tool install proctr
 ```
 
 With pip:
 
 ```bash
-pip install lsrenovate
+pip install proctr
 ```
 
 ### From source
 
 ```sh
-git clone https://github.com/mxmehl/lsrenovate.git
-cd lsrenovate
+git clone https://github.com/mxmehl/proctr.git
+cd proctr
 uv sync --no-dev
 ```
 
@@ -85,11 +85,11 @@ uv sync --no-dev
      work:
        internal-service:
          forge: gitlab
-         url: https://gitlab.example.com/team/internal-service
+         url: https://company.example.com/team/internal-service
      personal:
        my-blog:
          forge: gitea
-         url: https://gitea.example.com/myuser/my-blog
+         url: https://myowngit.example.com/myuser/my-blog
    ```
 
    Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. `forge` must be `github`, `gitlab`, or `gitea`.
@@ -103,18 +103,18 @@ uv sync --no-dev
 3. **Run it:**
 
    ```sh
-   lsrenovate
+   proctr
    ```
 
    Or preview the UI with canned sample data (no config/credentials/repos needed), e.g. for screenshots:
 
    ```sh
-   lsrenovate --demo
+   proctr --demo
    ```
 
 ## Configuration
 
-lsrenovate reads an optional TOML config file at your platform's user config directory (e.g. `~/Library/Application Support/lsrenovate/config.toml` on macOS, `~/.config/lsrenovate/config.toml` on Linux):
+proctr reads an optional TOML config file at your platform's user config directory (e.g. `~/Library/Application Support/proctr/config.toml` on macOS, `~/.config/proctr/config.toml` on Linux):
 
 ```toml
 merge_method = "squash"                # "squash" (default), "merge", or "rebase"
@@ -143,7 +143,7 @@ token = "glpat-..."                    # optional; or use token_command like abo
 # labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
 # branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for this instance only
 
-# One [gitea."<host>"] table per Gitea instance you use. lsrenovate never
+# One [gitea."<host>"] table per Gitea instance you use. proctr never
 # handles Gitea tokens itself — see the note below.
 [gitea."gitea.example.com"]
 login = "gitea.example.com"            # optional; defaults to the host itself
@@ -151,17 +151,19 @@ login = "gitea.example.com"            # optional; defaults to the host itself
 # branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for this instance only
 ```
 
-`token_command` (under `[github]` or any `[gitlab."<host>"]` table) is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If it fails, lsrenovate falls back to the plaintext `token` (or, for GitHub, `gh`'s own auth) and shows a warning on startup.
+`token_command` (under `[github]` or any `[gitlab."<host>"]` table) is run directly via subprocess (no shell involved, so it works the same regardless of your login shell), and its stdout (trimmed) is used as the token. This avoids storing a plaintext token in the config file. If it fails, proctr falls back to the plaintext `token` (or, for GitHub, `gh`'s own auth) and shows a warning on startup.
 
 ### Filtering PRs: labels and branch prefixes
 
-By default, lsrenovate matches PRs by branch prefix `renovate/` (Renovate's own default branch-naming convention), not by label — this works out of the box without any config, since it doesn't depend on which label your Renovate setup happens to use.
+proctr doesn't care which bot (or human) opened a PR — it matches purely on `labels` and/or `branch_prefixes`, so it works equally well for Renovate, Dependabot, another bot, or a hand-maintained convention, as long as it's consistent.
 
-Renovate (and similar bots) don't always use the same label across every forge — for example, GitHub/GitLab repos might use `Renovate` while Gitea repos use `dependencies`. Set `labels` at the top level for the default used everywhere, and override it per forge (`[github]`) or per instance (`[gitlab."<host>"]`, `[gitea."<host>"]`) wherever it differs. Multiple labels are always matched with AND semantics — a PR must carry every configured label, not just one.
+By default, proctr matches PRs by branch prefix `renovate/` (Renovate's own default branch-naming convention), not by label — this works out of the box without any config for the most common case. If you use Dependabot instead, set `branch_prefixes = ["dependabot/"]` (Dependabot's default branch prefix); mix both (`["renovate/", "dependabot/"]`) if you run both across your repos.
 
-You can additionally (or instead) filter by branch name prefix via `branch_prefixes`, e.g. `["renovate/"]` to match Renovate's default branch naming. Multiple prefixes are matched with OR semantics — a PR matches if its branch starts with any one of them. `branch_prefixes` follows the same global/per-forge/per-instance override hierarchy as `labels`.
+Bots don't always use the same label across every forge — for example, GitHub/GitLab repos might use `Renovate` while Gitea repos use `dependencies`. Set `labels` at the top level for the default used everywhere, and override it per forge (`[github]`) or per instance (`[gitlab."<host>"]`, `[gitea."<host>"]`) wherever it differs. Multiple labels are always matched with AND semantics — a PR must carry every configured label, not just one.
 
-`labels` may be set to `[]` to disable label filtering entirely at a given level (e.g. `labels = []` with `branch_prefixes = ["renovate/"]` set at the same level matches by branch prefix alone). As a convenience, setting `branch_prefixes` at a level without also setting `labels` there implies `labels = []` at that level — you don't need to explicitly disable labels when you only care about the branch prefix. At least one of `labels` or `branch_prefixes` must be non-empty (after overrides are resolved) for each forge/instance actually in use, or lsrenovate raises a configuration error at startup.
+You can additionally (or instead) filter by branch name prefix via `branch_prefixes`, e.g. `["renovate/"]` or `["dependabot/"]`. Multiple prefixes are matched with OR semantics — a PR matches if its branch starts with any one of them. `branch_prefixes` follows the same global/per-forge/per-instance override hierarchy as `labels`.
+
+`labels` may be set to `[]` to disable label filtering entirely at a given level (e.g. `labels = []` with `branch_prefixes = ["renovate/"]` set at the same level matches by branch prefix alone). As a convenience, setting `branch_prefixes` at a level without also setting `labels` there implies `labels = []` at that level — you don't need to explicitly disable labels when you only care about the branch prefix. At least one of `labels` or `branch_prefixes` must be non-empty (after overrides are resolved) for each forge/instance actually in use, or proctr raises a configuration error at startup.
 
 When both `labels` and `branch_prefixes` are configured (and non-empty) for the same forge/instance, `match_mode` decides how they combine:
 
@@ -172,15 +174,15 @@ When both `labels` and `branch_prefixes` are configured (and non-empty) for the 
 
 ### Gitea limitation: no token management
 
-The `tea` CLI has no way to pass a token or host per invocation — it only works against named logins that are registered ahead of time. lsrenovate does not manage Gitea credentials at all: before using a Gitea instance, register it yourself with:
+The `tea` CLI has no way to pass a token or host per invocation — it only works against named logins that are registered ahead of time. proctr does not manage Gitea credentials at all: before using a Gitea instance, register it yourself with:
 
 ```sh
 tea login add --name gitea.example.com --url https://gitea.example.com --token <your-token>
 ```
 
-The `login` field in `[gitea."<host>"]` just tells lsrenovate which registered login name to pass to `tea --login`; it defaults to the host itself, which matches the convention of naming logins after their host.
+The `login` field in `[gitea."<host>"]` just tells proctr which registered login name to pass to `tea --login`; it defaults to the host itself, which matches the convention of naming logins after their host.
 
-Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https://github.com/go-gitea/gitea/issues/19755) — it can report `false` for a PR that's actually mergeable. lsrenovate still color-codes it, though: attempting to merge a PR that turns out to have a real conflict fails cleanly with an error rather than silently doing anything harmful, so a wrong "mergeable" signal only costs you one failed merge attempt, not a bad merge. Pipeline/CI status is fetched separately via the Gitea API's combined commit status endpoint (one follow-up call per PR) and factors into the same color, alongside `mergeable`.
+Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https://github.com/go-gitea/gitea/issues/19755) — it can report `false` for a PR that's actually mergeable. proctr still color-codes it, though: attempting to merge a PR that turns out to have a real conflict fails cleanly with an error rather than silently doing anything harmful, so a wrong "mergeable" signal only costs you one failed merge attempt, not a bad merge. Pipeline/CI status is fetched separately via the Gitea API's combined commit status endpoint (one follow-up call per PR) and factors into the same color, alongside `mergeable`.
 
 ## Keybindings
 
@@ -198,3 +200,5 @@ Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https:
 ## Copyright and Licensing
 
 This project is licensed under the Apache License 2.0, copyrighted by Max Mehl. As the project follows the [REUSE](https://reuse.software) best practices, you can find licensing information for each individual file in the [LICENSES](LICENSES) directory or corresponding file headers.
+
+Note: In its earliest days, this project went under the name `lsrenovate`. It became `proctr` when it was generalized to work with any PR/MR, not just Renovate ones. The old name still appears in older changelog entries.

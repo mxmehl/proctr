@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lsrenovate.forges.base import PullRequest
-from lsrenovate.forges.gitea import GiteaForge
-from lsrenovate.projects import Repo
+from proctr.forges.base import PullRequest
+from proctr.forges.gitea import GiteaForge
+from proctr.projects import Repo
 
 REPO = Repo(
     group="src.mehl.mx",
@@ -75,7 +75,7 @@ def pull_request() -> PullRequest:
     )
 
 
-def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
+def test_list_matching_prs_builds_correct_command_and_parses_json() -> None:
     """Tea pulls list is invoked with --repo/--login/--fields, and JSON is parsed."""
     forge = GiteaForge(login="git.fsfe.org")
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
@@ -93,7 +93,7 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     cmd = mock_run.call_args_list[0].args[0]
     assert Path(cmd[0]).name == "tea"
@@ -143,7 +143,7 @@ def test_merge_ready_is_true_when_mergeable_and_pipeline_passing() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].merge_ready is True
 
@@ -159,7 +159,7 @@ def test_merge_ready_is_false_when_not_mergeable() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].merge_ready is False
 
@@ -176,7 +176,7 @@ def test_merge_ready_is_false_when_pipeline_failed() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].pipeline_status == "failure"
     assert prs[0].merge_ready is False
@@ -200,7 +200,7 @@ def test_review_decision_approved_when_enough_official_approvals() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == "APPROVED"
 
@@ -218,7 +218,7 @@ def test_review_decision_review_required_when_not_enough_approvals() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == "REVIEW_REQUIRED"
 
@@ -241,7 +241,7 @@ def test_review_decision_changes_requested_overrides_approval_count() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == "CHANGES_REQUESTED"
 
@@ -267,7 +267,7 @@ def test_review_decision_ignores_dismissed_and_stale_reviews() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == "REVIEW_REQUIRED"
 
@@ -283,7 +283,7 @@ def test_review_decision_empty_when_no_branch_protection() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == ""
 
@@ -304,7 +304,7 @@ def test_review_decision_approved_when_no_branch_protection_but_has_approval() -
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == "APPROVED"
 
@@ -320,7 +320,7 @@ def test_review_decision_falls_back_to_empty_on_api_failures() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == ""
 
@@ -336,7 +336,7 @@ def test_label_filtering_requires_all_configured_labels() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert len(prs) == 1
     assert prs[0].number == 427
@@ -347,7 +347,7 @@ def test_no_labels_configured_or_matching_returns_empty() -> None:
     forge = GiteaForge(login="git.fsfe.org", labels=["nonexistent-label"])
     fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
     with patch("subprocess.run", return_value=fake_result):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs == []
 
@@ -363,7 +363,7 @@ def test_branch_prefix_only_mode_matches_by_head_field() -> None:
         "subprocess.run",
         side_effect=[list_result, protections_result, status_result, reviews_result],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert [pr.number for pr in prs] == [427]
 
@@ -378,7 +378,7 @@ def test_and_mode_requires_both_label_and_branch_prefix() -> None:
     )
     list_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
     with patch("subprocess.run", return_value=list_result):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     # PR 427 has the label but not the branch prefix; PR 285 has the branch prefix but not
     # the label - neither satisfies both, so both are excluded.
@@ -408,7 +408,7 @@ def test_or_mode_matches_either_label_or_branch_prefix() -> None:
             reviews_result,
         ],
     ):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert {pr.number for pr in prs} == {427, 285}
 

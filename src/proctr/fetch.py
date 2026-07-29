@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from lsrenovate.forges.base import Forge, PullRequest
-    from lsrenovate.projects import Repo
+    from proctr.forges.base import Forge, PullRequest
+    from proctr.projects import Repo
 
 MAX_WORKERS = 8
 
@@ -37,7 +37,7 @@ class FetchResult:
 def _fetch_one(repo: Repo, resolve_forge: Callable[[Repo], Forge]) -> list[PullRequest]:
     """Resolve the right forge for a repo and fetch its PRs (may raise)."""
     forge = resolve_forge(repo)
-    return forge.list_renovate_prs(repo)
+    return forge.list_matching_prs(repo)
 
 
 def fetch_all_prs(

@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-from lsrenovate.app import ForgeDispatcher
-from lsrenovate.config import Config, GiteaInstanceConfig, GitHubConfig, GitLabInstanceConfig
-from lsrenovate.forges.gitea import GiteaForge
-from lsrenovate.forges.github import GitHubForge
-from lsrenovate.forges.gitlab import GitLabForge
-from lsrenovate.projects import Repo
+from proctr.app import ForgeDispatcher
+from proctr.config import Config, GiteaInstanceConfig, GitHubConfig, GitLabInstanceConfig
+from proctr.forges.gitea import GiteaForge
+from proctr.forges.github import GitHubForge
+from proctr.forges.gitlab import GitLabForge
+from proctr.projects import Repo
 
 
 def _repo(forge: str, host: str, name: str = "my-tool") -> Repo:

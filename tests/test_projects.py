@@ -5,7 +5,7 @@
 
 from pathlib import Path
 
-from lsrenovate.projects import load_repos
+from proctr.projects import load_repos
 
 FIXTURE_YAML = """
 myprojects:

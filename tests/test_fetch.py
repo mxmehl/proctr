@@ -6,9 +6,9 @@
 from datetime import datetime
 from pathlib import Path
 
-from lsrenovate.fetch import fetch_all_prs
-from lsrenovate.forges.base import ApproveResult, Forge, MergeResult, PullRequest
-from lsrenovate.projects import Repo
+from proctr.fetch import fetch_all_prs
+from proctr.forges.base import ApproveResult, Forge, MergeResult, PullRequest
+from proctr.projects import Repo
 
 
 def _repo(name: str) -> Repo:
@@ -28,7 +28,7 @@ class FakeForge(Forge):
     def __init__(self, failing_repo_name: str) -> None:
         self._failing_repo_name = failing_repo_name
 
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+    def list_matching_prs(self, repo: Repo) -> list[PullRequest]:
         """Raise for the designated repo, otherwise return one canned PR."""
         if repo.name == self._failing_repo_name:
             msg = "simulated gh failure"

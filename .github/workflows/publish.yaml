@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/lsrenovate
+      url: https://pypi.org/p/proctr
     permissions:
       id-token: write
       contents: read

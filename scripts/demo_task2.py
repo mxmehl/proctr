@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import sys
 
-from lsrenovate.config import load_config
-from lsrenovate.forges.github import GitHubForge
-from lsrenovate.projects import load_repos
+from proctr.config import load_config
+from proctr.forges.github import GitHubForge
+from proctr.projects import load_repos
 
 
 def main() -> None:
@@ -22,7 +22,7 @@ def main() -> None:
 
     for repo in sample:
         try:
-            prs = forge.list_renovate_prs(repo)
+            prs = forge.list_matching_prs(repo)
         except Exception as exc:  # noqa: BLE001 - demo script, show any failure
             print(f"{repo.full_name}: ERROR: {exc}")
             continue

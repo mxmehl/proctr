@@ -2,14 +2,15 @@
 # SPDX-License-Identifier: CC0-1.0
 
 [project]
-name = "lsrenovate"
+name = "proctr"
 version = "0.3.1"
-description = "Terminal UI for triaging open Renovate pull requests across multiple repositories"
+description = "Terminal UI for triaging open pull/merge requests across multiple repositories and forges"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 keywords = [
     "renovate",
+    "dependabot",
     "cli",
     "tui",
     "interactive",
@@ -28,11 +29,11 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/mxmehl/lsrenovate"
-Changelog = "https://github.com/mxmehl/lsrenovate/blob/main/CHANGELOG.md"
+Repository = "https://github.com/mxmehl/proctr"
+Changelog = "https://github.com/mxmehl/proctr/blob/main/CHANGELOG.md"
 
 [project.scripts]
-lsrenovate = "lsrenovate:main"
+proctr = "proctr:main"
 
 [dependency-groups]
 dev = ["pytest>=9.1.1", "ruff>=0.15.10", "ty>=0.0.29"]

@@ -6,8 +6,8 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from lsrenovate.forges.base import PullRequest
-from lsrenovate.projects import Repo
+from proctr.forges.base import PullRequest
+from proctr.projects import Repo
 
 
 def demo_pull_requests() -> list[PullRequest]:
@@ -81,7 +81,7 @@ def demo_pull_requests() -> list[PullRequest]:
         PullRequest(
             repo=github_repo2,
             number=7,
-            title="chore(deps): update dependency lsrenovate to 0.3.0",
+            title="chore(deps): update dependency proctr to 0.3.0",
             url="https://example.invalid/octocat/example/pull/7",
             created_at=now - timedelta(days=1),
             updated_at=now - timedelta(days=1),

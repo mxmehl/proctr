@@ -12,7 +12,7 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import (
+from proctr.forges.base import (
     ApproveResult,
     Forge,
     MergeResult,
@@ -22,7 +22,7 @@ from lsrenovate.forges.base import (
 )
 
 if TYPE_CHECKING:
-    from lsrenovate.projects import Repo
+    from proctr.projects import Repo
 
 LIST_FIELDS = (
     "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus,"
@@ -79,7 +79,7 @@ class GitHubForge(Forge):
         )
         return json.loads(result.stdout)
 
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+    def list_matching_prs(self, repo: Repo) -> list[PullRequest]:
         """Return open PRs matching the configured labels and/or branch prefixes.
 
         Labels are still filtered server-side via `--label` whenever

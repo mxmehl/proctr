@@ -1,4 +1,4 @@
-"""Textual TUI application for managing open Renovate PRs."""
+"""Textual TUI application for managing open pull/merge requests."""
 
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
@@ -21,19 +21,19 @@ from textual.widgets import DataTable, Footer, Header
 if TYPE_CHECKING:
     from textual.widgets.data_table import ColumnKey
 
-    from lsrenovate.forges.base import PullRequest
+    from proctr.forges.base import PullRequest
 
-from lsrenovate.config import load_config
-from lsrenovate.demo import demo_pull_requests
-from lsrenovate.fetch import FetchResult, fetch_all_prs
-from lsrenovate.forges.gitea import GiteaForge
-from lsrenovate.forges.github import GitHubForge
-from lsrenovate.forges.gitlab import GitLabForge
-from lsrenovate.projects import Repo, load_repos
+from proctr.config import load_config
+from proctr.demo import demo_pull_requests
+from proctr.fetch import FetchResult, fetch_all_prs
+from proctr.forges.gitea import GiteaForge
+from proctr.forges.github import GitHubForge
+from proctr.forges.gitlab import GitLabForge
+from proctr.projects import Repo, load_repos
 
 if TYPE_CHECKING:
-    from lsrenovate.config import Config
-    from lsrenovate.forges.base import ApproveResult, Forge, MergeResult
+    from proctr.config import Config
+    from proctr.forges.base import ApproveResult, Forge, MergeResult
 
 COLUMNS = ("Sel", "Repo", "Title", "Age", "Pipeline", "Mergeable", "Review", "#PR")
 CHECKED = "[X]"
@@ -258,10 +258,10 @@ class ForgeDispatcher:
         raise ValueError(msg)
 
 
-class LsRenovateApp(App[None]):
-    """Lists open Renovate PRs across all configured GitHub, GitLab, and Gitea repos."""
+class ProctrApp(App[None]):
+    """Lists open PRs/MRs matching the configured filters across all configured forges."""
 
-    TITLE = "lsrenovate"
+    TITLE = "proctr"
     BINDINGS: ClassVar = [
         ("r", "refresh_prs", "Refresh"),
         ("t", "cycle_sort", "Sort"),
@@ -319,7 +319,7 @@ class LsRenovateApp(App[None]):
         self.refresh(layout=True)
 
     def action_refresh_prs(self) -> None:
-        """Kick off a background fetch of all Renovate PRs."""
+        """Kick off a background fetch of all matching PRs."""
         self.sub_title = "Refreshing…"
         self.run_worker(self._fetch_and_populate(), exclusive=True)
 
@@ -343,7 +343,7 @@ class LsRenovateApp(App[None]):
         self._render_table()
 
         error_note = f", {len(result.errors)} repo error(s)" if result.errors else ""
-        self.sub_title = f"{len(self.pull_requests)} open Renovate PR(s){error_note}"
+        self.sub_title = f"{len(self.pull_requests)} open PR(s){error_note}"
         if result.errors:
             for err in result.errors:
                 self.notify(f"{err.repo.full_name}: {err.error}", severity="warning", timeout=8)
@@ -552,10 +552,10 @@ class LsRenovateApp(App[None]):
     def _shell_env(self) -> dict[str, str]:
         """Build the env for the spawned shell so it starts like a fresh terminal session.
 
-        lsrenovate normally runs via `uv run`, which pollutes the current
+        proctr normally runs via `uv run`, which pollutes the current
         process's env with its own venv/PATH state (VIRTUAL_ENV, a session
         marker from `uv`'s own tool-version manager, and a mutated PATH
-        with lsrenovate's own .venv/bin prepended). Passed straight through,
+        with proctr's own .venv/bin prepended). Passed straight through,
         that state leaks into an unrelated project's shell and confuses its
         own tools (e.g. `uv` warns about a mismatched VIRTUAL_ENV). Resetting
         PATH to a plain OS bootstrap and dropping uv/mise's session markers
@@ -574,15 +574,17 @@ class LsRenovateApp(App[None]):
 
 
 def main() -> None:
-    """Run the lsrenovate TUI application."""
-    parser = argparse.ArgumentParser(description="A TUI for managing open Renovate PRs.")
+    """Run the proctr TUI application."""
+    parser = argparse.ArgumentParser(
+        description="A TUI for managing open pull/merge requests across multiple repos and forges."
+    )
     parser.add_argument(
         "--demo",
         action="store_true",
         help="Run with canned sample data instead of fetching real PRs (for screenshots).",
     )
     args = parser.parse_args()
-    LsRenovateApp(demo=args.demo).run()
+    ProctrApp(demo=args.demo).run()
 
 
 if __name__ == "__main__":

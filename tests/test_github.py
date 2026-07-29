@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lsrenovate.forges.base import PullRequest
-from lsrenovate.forges.github import GitHubForge
-from lsrenovate.projects import Repo
+from proctr.forges.base import PullRequest
+from proctr.forges.github import GitHubForge
+from proctr.projects import Repo
 
 REPO = Repo(
     group="github",
@@ -53,12 +53,12 @@ def pull_request() -> PullRequest:
     )
 
 
-def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
+def test_list_matching_prs_builds_correct_command_and_parses_json() -> None:
     """Gh pr list is invoked with the right flags/token, and JSON output is parsed."""
     forge = GitHubForge(github_token="secret-token")
     fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
     with patch("subprocess.run", return_value=fake_result) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     args, kwargs = mock_run.call_args
     cmd = args[0]
@@ -77,13 +77,13 @@ def test_list_renovate_prs_builds_correct_command_and_parses_json() -> None:
     assert prs[0].review_decision == ""
 
 
-def test_list_renovate_prs_parses_review_decision() -> None:
+def test_list_matching_prs_parses_review_decision() -> None:
     """A reviewDecision (e.g. CHANGES_REQUESTED) is parsed onto PullRequest.review_decision."""
     forge = GitHubForge(github_token=None)
     pr_json = [{**FAKE_PR_JSON[0], "reviewDecision": "CHANGES_REQUESTED"}]
     fake_result = MagicMock(stdout=json.dumps(pr_json))
     with patch("subprocess.run", return_value=fake_result):
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert prs[0].review_decision == "CHANGES_REQUESTED"
 
@@ -93,7 +93,7 @@ def test_list_prs_with_multiple_configured_labels() -> None:
     forge = GitHubForge(github_token=None, labels=["Renovate", "dependencies"])
     fake_result = MagicMock(stdout=json.dumps([]))
     with patch("subprocess.run", return_value=fake_result) as mock_run:
-        forge.list_renovate_prs(REPO)
+        forge.list_matching_prs(REPO)
 
     cmd = mock_run.call_args.args[0]
     label_positions = [i for i, arg in enumerate(cmd) if arg == "--label"]
@@ -106,7 +106,7 @@ def test_branch_prefix_only_mode_disables_label_flags() -> None:
     forge = GitHubForge(github_token=None, labels=[], branch_prefixes=["renovate/"])
     fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
     with patch("subprocess.run", return_value=fake_result) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     cmd = mock_run.call_args.args[0]
     assert "--label" not in cmd
@@ -120,7 +120,7 @@ def test_and_mode_narrows_label_filtered_results_by_branch_prefix() -> None:
     )
     fake_result = MagicMock(stdout=json.dumps(FAKE_PR_JSON))
     with patch("subprocess.run", return_value=fake_result) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert mock_run.call_count == 1
     assert "--label" in mock_run.call_args.args[0]
@@ -141,7 +141,7 @@ def test_or_mode_unions_label_and_branch_matches_with_two_queries() -> None:
     with patch(
         "subprocess.run", side_effect=[label_filtered_result, unfiltered_result]
     ) as mock_run:
-        prs = forge.list_renovate_prs(REPO)
+        prs = forge.list_matching_prs(REPO)
 
     assert mock_run.call_count == 2
     assert "--label" in mock_run.call_args_list[0].args[0]

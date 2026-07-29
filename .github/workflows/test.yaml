@@ -35,9 +35,9 @@ jobs:
         with:
           python: ${{ matrix.python-version }}
           uv_args: --no-dev
-      - name: Execute lsrenovate
+      - name: Execute proctr
         run: |
-          uv run lsrenovate --help
+          uv run proctr --help
 
   # Test building the package and installing it via pip3
   test-build-install:
@@ -57,9 +57,9 @@ jobs:
       - name: Build package
         run: uv build
       - name: Install package
-        run: pip3 install dist/lsrenovate-*.tar.gz
+        run: pip3 install dist/proctr-*.tar.gz
       - name: Run package
-        run: lsrenovate --help
+        run: proctr --help
 
   pytest:
     runs-on: ubuntu-24.04

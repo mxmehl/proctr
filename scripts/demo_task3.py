@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import time
 
-from lsrenovate.config import load_config
-from lsrenovate.fetch import fetch_all_prs
-from lsrenovate.forges.github import GitHubForge
-from lsrenovate.projects import load_repos
+from proctr.config import load_config
+from proctr.fetch import fetch_all_prs
+from proctr.forges.github import GitHubForge
+from proctr.projects import load_repos
 
 
 def main() -> None:

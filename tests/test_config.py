@@ -8,7 +8,7 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from lsrenovate.config import (
+from proctr.config import (
     DEFAULT_BRANCH_PREFIXES,
     DEFAULT_MATCH_MODE,
     DEFAULT_MERGE_METHOD,

@@ -1,9 +1,4 @@
-"""Forge-agnostic interface for listing and merging Renovate PRs.
-
-Only GitHub is implemented today, but the interface is kept forge-agnostic
-so gitlab (glab) and gitea (tea) adapters can be added later without
-touching the app/UI layer.
-"""
+"""Forge-agnostic interface for listing and merging matching pull/merge requests."""
 
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
@@ -17,12 +12,12 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from lsrenovate.projects import Repo
+    from proctr.projects import Repo
 
 
 @dataclass(frozen=True)
 class PullRequest:
-    """A single open Renovate pull request.
+    """A single open pull/merge request.
 
     `mergeable` is a raw, forge-specific conflict/approval status string.
     `pipeline_status` is the CI/pipeline outcome for the head commit (also
@@ -121,8 +116,8 @@ class Forge(ABC):
     """Interface a forge adapter (github/gitlab/gitea) must implement."""
 
     @abstractmethod
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
-        """Return open Renovate-labeled PRs for a single repo."""
+    def list_matching_prs(self, repo: Repo) -> list[PullRequest]:
+        """Return open PRs/MRs matching the configured labels/branch prefixes for a single repo."""
 
     @abstractmethod
     def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:

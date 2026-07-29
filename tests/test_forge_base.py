@@ -5,7 +5,7 @@
 
 import pytest
 
-from lsrenovate.forges.base import branch_matches_prefixes, combine_match
+from proctr.forges.base import branch_matches_prefixes, combine_match
 
 
 @pytest.mark.parametrize(

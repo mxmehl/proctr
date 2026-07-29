@@ -1,4 +1,4 @@
-"""Configuration loading for lsrenovate.
+"""Configuration loading for proctr.
 
 Resolution order for the GitHub token: GITHUB_TOKEN env var, then
 [github].token_command (e.g. a password manager CLI) in the config file,
@@ -20,7 +20,7 @@ from pathlib import Path
 import jsonschema
 from platformdirs import user_config_dir
 
-APP_NAME = "lsrenovate"
+APP_NAME = "proctr"
 DEFAULT_MERGE_METHOD = "squash"
 VALID_MERGE_METHODS = {"squash", "merge", "rebase"}
 DEFAULT_SORT_BY = "repo"
@@ -202,7 +202,7 @@ class GitLabInstanceConfig:
 class GiteaInstanceConfig:
     """Per-host Gitea settings.
 
-    lsrenovate never handles Gitea tokens directly: register the instance
+    proctr never handles Gitea tokens directly: register the instance
     with `tea login add` yourself first, then reference that login name
     here (defaults to the host itself, which is tea's own naming
     convention when you name logins after their host).

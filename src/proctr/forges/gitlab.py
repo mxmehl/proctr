@@ -17,7 +17,7 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import (
+from proctr.forges.base import (
     ApproveResult,
     Forge,
     MergeResult,
@@ -27,7 +27,7 @@ from lsrenovate.forges.base import (
 )
 
 if TYPE_CHECKING:
-    from lsrenovate.projects import Repo
+    from proctr.projects import Repo
 
 GLAB_EXECUTABLE = shutil.which("glab") or "glab"
 MERGEABLE = "MERGEABLE"
@@ -85,7 +85,7 @@ class GitLabForge(Forge):
         )
         return json.loads(result.stdout)
 
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+    def list_matching_prs(self, repo: Repo) -> list[PullRequest]:
         """Return open MRs matching the configured labels and/or branch prefixes.
 
         `mergeable` reflects only whether GitLab sees a merge conflict

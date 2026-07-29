@@ -1,6 +1,6 @@
 """Gitea forge adapter backed by the `tea` CLI.
 
-lsrenovate never handles Gitea tokens: `tea` has no per-invocation
+proctr never handles Gitea tokens: `tea` has no per-invocation
 token/host env var mechanism, only pre-registered named logins
 (`tea login add --name=X --url=Y --token=Z`), selected here via
 `--login <name>`. Users must register each Gitea instance themselves;
@@ -40,7 +40,7 @@ import subprocess
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from lsrenovate.forges.base import (
+from proctr.forges.base import (
     ApproveResult,
     Forge,
     MergeResult,
@@ -51,7 +51,7 @@ from lsrenovate.forges.base import (
 )
 
 if TYPE_CHECKING:
-    from lsrenovate.projects import Repo
+    from proctr.projects import Repo
 
 TEA_EXECUTABLE = shutil.which("tea") or "tea"
 GIT_EXECUTABLE = shutil.which("git") or "git"
@@ -80,7 +80,7 @@ class GiteaForge(Forge):
         self._labels, self._branch_prefixes = resolve_filter_defaults(labels, branch_prefixes)
         self._match_mode = match_mode
 
-    def list_renovate_prs(self, repo: Repo) -> list[PullRequest]:
+    def list_matching_prs(self, repo: Repo) -> list[PullRequest]:
         """Return open PRs matching the configured labels and/or branch prefixes.
 
         Neither filter has server-side support in `tea pulls list`, so all

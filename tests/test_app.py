@@ -11,18 +11,18 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lsrenovate.app import (
-    LsRenovateApp,
+from proctr.app import (
+    ProctrApp,
     _mergeable_cell,
     _pipeline_cell,
     _review_cell,
     build_approve_summary,
     build_merge_summary,
 )
-from lsrenovate.config import Config, GitHubConfig
-from lsrenovate.demo import demo_pull_requests
-from lsrenovate.forges.base import ApproveResult, MergeResult, PullRequest
-from lsrenovate.projects import Repo
+from proctr.config import Config, GitHubConfig
+from proctr.demo import demo_pull_requests
+from proctr.forges.base import ApproveResult, MergeResult, PullRequest
+from proctr.projects import Repo
 
 REPO = Repo(
     group="github",
@@ -184,8 +184,8 @@ def test_build_approve_summary_mixed_results() -> None:
 
 
 @pytest.fixture
-def app_for_merge() -> LsRenovateApp:
-    """A minimal LsRenovateApp stand-in with notify/resolve_forge/config mocked out.
+def app_for_merge() -> ProctrApp:
+    """A minimal ProctrApp stand-in with notify/resolve_forge/config mocked out.
 
     Avoids spinning up the real Textual app harness (no widgets are
     touched by _merge_and_refresh besides notify/sub_title) while still
@@ -193,7 +193,7 @@ def app_for_merge() -> LsRenovateApp:
     reactive that requires the App's DOM machinery to be initialized, so
     it's shadowed with a plain instance attribute here.
     """
-    app = LsRenovateApp.__new__(LsRenovateApp)
+    app = ProctrApp.__new__(ProctrApp)
     app.notify = MagicMock()
     app.config = MagicMock(merge_method="squash")
     app.selected = set()
@@ -206,7 +206,7 @@ def app_for_merge() -> LsRenovateApp:
     return app
 
 
-def test_merge_single_pr_skips_progress_notifications(app_for_merge: LsRenovateApp) -> None:
+def test_merge_single_pr_skips_progress_notifications(app_for_merge: ProctrApp) -> None:
     """A single-PR merge only gets the final summary, not batch-progress noise."""
     pr = _pr(1)
     forge = MagicMock()
@@ -220,7 +220,7 @@ def test_merge_single_pr_skips_progress_notifications(app_for_merge: LsRenovateA
     assert "Merged 1/1 PR(s)." in messages[0]
 
 
-def test_approve_single_pr_skips_progress_notifications(app_for_merge: LsRenovateApp) -> None:
+def test_approve_single_pr_skips_progress_notifications(app_for_merge: ProctrApp) -> None:
     """A single-PR approve only gets the final summary, not batch-progress noise."""
     pr = _pr(1)
     forge = MagicMock()
@@ -237,7 +237,7 @@ def test_approve_single_pr_skips_progress_notifications(app_for_merge: LsRenovat
 def test_merge_batch_reports_start_and_per_pr_progress() -> None:
     """A multi-PR merge notifies the batch start and each PR's outcome as it completes.
 
-    Uses the real Textual app harness (run_test) with a real LsRenovateApp
+    Uses the real Textual app harness (run_test) with a real ProctrApp
     instance, since sub_title is a reactive property that needs the App's
     DOM machinery initialized (via App.__init__) before it can be assigned
     — a bare __new__() instance can't set it.
@@ -259,7 +259,7 @@ def test_merge_batch_reports_start_and_per_pr_progress() -> None:
             gitlab_instances={},
             gitea_instances={},
         )
-        app = LsRenovateApp(config=config)
+        app = ProctrApp(config=config)
         prs = [_pr(1), _pr(2), _pr(3)]
         forge = MagicMock()
         forge.merge_pr.side_effect = [

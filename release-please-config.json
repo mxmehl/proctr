@@ -7,7 +7,7 @@
         {
           "path": "uv.lock",
           "type": "toml",
-          "jsonpath": "$.package[?(@.name.value=='lsrenovate')].version"
+          "jsonpath": "$.package[?(@.name.value=='proctr')].version"
         }
       ]
     }
