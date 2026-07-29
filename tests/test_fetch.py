@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from lsrenovate.fetch import fetch_all_prs
-from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+from lsrenovate.forges.base import ApproveResult, Forge, MergeResult, PullRequest
 from lsrenovate.projects import Repo
 
 
@@ -47,6 +47,10 @@ class FakeForge(Forge):
         ]
 
     def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:
+        """Not needed for these tests."""
+        raise NotImplementedError
+
+    def approve_pr(self, pull_request: PullRequest) -> ApproveResult:
         """Not needed for these tests."""
         raise NotImplementedError
 

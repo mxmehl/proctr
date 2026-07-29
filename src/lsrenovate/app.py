@@ -30,10 +30,10 @@ from lsrenovate.projects import load_repos
 if TYPE_CHECKING:
     from lsrenovate.config import Config
     from lsrenovate.fetch import FetchResult
-    from lsrenovate.forges.base import Forge, MergeResult, PullRequest
+    from lsrenovate.forges.base import ApproveResult, Forge, MergeResult, PullRequest
     from lsrenovate.projects import Repo
 
-COLUMNS = ("Sel", "Repo", "Title", "Age", "Pipeline", "Mergeable", "PR")
+COLUMNS = ("Sel", "Repo", "Title", "Age", "Pipeline", "Mergeable", "Review", "#PR")
 CHECKED = "[X]"
 UNCHECKED = "[ ]"
 TITLE_MAX_LEN = 40
@@ -79,9 +79,19 @@ def _pr_key(pr: PullRequest) -> str:
 
 
 PIPELINE_SUCCESS_VALUES = {"CLEAN", "success"}
-PIPELINE_FAILURE_VALUES = {"UNSTABLE", "failed", "canceled", "skipped", "error", "failure"}
+PIPELINE_FAILURE_VALUES = {
+    "UNSTABLE",
+    "BLOCKED",
+    "failed",
+    "canceled",
+    "skipped",
+    "error",
+    "failure",
+}
 MERGEABLE_VALUES = {"MERGEABLE", "true"}
 CONFLICTING_VALUES = {"CONFLICTING", "false"}
+REVIEW_APPROVED_VALUE = "APPROVED"
+REVIEW_BLOCKED_VALUES = {"REVIEW_REQUIRED", "CHANGES_REQUESTED"}
 
 
 def _mergeable_cell(value: str) -> Text:
@@ -113,11 +123,35 @@ def _pipeline_cell(value: str) -> Text:
     return Text(value)
 
 
+def _review_cell(value: str) -> Text:
+    """Render the Review cell from the raw reviewDecision-shaped string.
+
+    GitHub populates this from its own `reviewDecision` field; Gitea
+    derives an equivalent from its reviews + branch protection rules.
+    GitLab doesn't expose an equivalent today, so it leaves it "", shown
+    here as a plain, uncolored "None".
+    """
+    if value == REVIEW_APPROVED_VALUE:
+        return Text(value, style="bold green")
+    if value in REVIEW_BLOCKED_VALUES:
+        return Text(value, style="bold red")
+    return Text(value or "None")
+
+
 def build_merge_summary(results: list[MergeResult]) -> str:
     """Build a human-readable summary line from a batch of merge results."""
     succeeded = [r for r in results if r.success]
     failed = [r for r in results if not r.success]
     lines = [f"Merged {len(succeeded)}/{len(results)} PR(s)."]
+    lines.extend(f"  FAILED {_pr_key(r.pull_request)}: {r.message}" for r in failed)
+    return "\n".join(lines)
+
+
+def build_approve_summary(results: list[ApproveResult]) -> str:
+    """Build a human-readable summary line from a batch of approve results."""
+    succeeded = [r for r in results if r.success]
+    failed = [r for r in results if not r.success]
+    lines = [f"Approved {len(succeeded)}/{len(results)} PR(s)."]
     lines.extend(f"  FAILED {_pr_key(r.pull_request)}: {r.message}" for r in failed)
     return "\n".join(lines)
 
@@ -228,10 +262,11 @@ class LsRenovateApp(App[None]):
     TITLE = "lsrenovate"
     BINDINGS: ClassVar = [
         ("r", "refresh_prs", "Refresh"),
+        ("t", "cycle_sort", "Sort"),
         ("space", "toggle_selection", "Select"),
         ("o", "open_browser", "Open in browser"),
         ("s", "open_shell", "Checkout + shell"),
-        ("t", "cycle_sort", "Sort"),
+        ("a", "approve_selected", "Approve"),
         ("m", "merge_selected", "Merge"),
         ("q", "quit", "Quit"),
     ]
@@ -321,6 +356,7 @@ class LsRenovateApp(App[None]):
                 _format_age(pr.created_at),
                 _pipeline_cell(pr.pipeline_status),
                 _mergeable_cell(pr.mergeable),
+                _review_cell(pr.review_decision),
                 str(pr.number),
                 key=key,
             )
@@ -397,6 +433,43 @@ class LsRenovateApp(App[None]):
                     )
 
         summary = build_merge_summary(results)
+        any_failed = any(not r.success for r in results)
+        self.notify(summary, severity="warning" if any_failed else "information", timeout=10)
+
+        self.selected.clear()
+        await self._fetch_and_populate()
+
+    def action_approve_selected(self) -> None:
+        """Approve the selected (or focused) PR(s) sequentially, then refresh."""
+        prs = self._selected_or_focused_prs()
+        if not prs:
+            self.notify("No PR selected or focused", severity="warning")
+            return
+        self.run_worker(self._approve_and_refresh(prs), exclusive=True)
+
+    async def _approve_and_refresh(self, prs: list[PullRequest]) -> None:
+        total = len(prs)
+        if total > 1:
+            self.notify(f"Approving {total} PR(s)…", timeout=5)
+
+        results: list[ApproveResult] = []
+        for index, pr in enumerate(prs, start=1):
+            if total > 1:
+                self.sub_title = f"Approving {index}/{total}: {_pr_key(pr)}…"
+            forge = self.resolve_forge(pr.repo)
+            result = await asyncio.to_thread(forge.approve_pr, pr)
+            results.append(result)
+            if total > 1:
+                if result.success:
+                    self.notify(f"[{index}/{total}] Approved {_pr_key(pr)}", timeout=5)
+                else:
+                    self.notify(
+                        f"[{index}/{total}] FAILED {_pr_key(pr)}: {result.message}",
+                        severity="error",
+                        timeout=8,
+                    )
+
+        summary = build_approve_summary(results)
         any_failed = any(not r.success for r in results)
         self.notify(summary, severity="warning" if any_failed else "information", timeout=10)
 

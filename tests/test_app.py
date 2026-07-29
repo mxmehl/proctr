@@ -11,9 +11,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lsrenovate.app import LsRenovateApp, _mergeable_cell, _pipeline_cell, build_merge_summary
+from lsrenovate.app import (
+    LsRenovateApp,
+    _mergeable_cell,
+    _pipeline_cell,
+    _review_cell,
+    build_approve_summary,
+    build_merge_summary,
+)
 from lsrenovate.config import Config, GitHubConfig
-from lsrenovate.forges.base import MergeResult, PullRequest
+from lsrenovate.forges.base import ApproveResult, MergeResult, PullRequest
 from lsrenovate.projects import Repo
 
 REPO = Repo(
@@ -111,8 +118,53 @@ def test_mergeable_cell_independent_of_pipeline_status() -> None:
 
 def test_pipeline_cell_plain_for_unknown_or_no_pipeline() -> None:
     """Statuses that are neither a known success nor failure stay uncolored."""
-    for value in ("N/A", "running", "pending", "BLOCKED"):
+    for value in ("N/A", "running", "pending"):
         assert str(_pipeline_cell(value).style) == ""
+
+
+def test_pipeline_cell_red_for_blocked() -> None:
+    """GitHub's mergeStateStatus=BLOCKED (e.g. unmet required reviews/checks) renders red."""
+    assert str(_pipeline_cell("BLOCKED").style) == "bold red"
+
+
+def test_review_cell_green_for_approved() -> None:
+    """reviewDecision=APPROVED renders green."""
+    assert str(_review_cell("APPROVED").style) == "bold green"
+
+
+def test_review_cell_red_for_review_required_or_changes_requested() -> None:
+    """A reviewDecision of REVIEW_REQUIRED or CHANGES_REQUESTED renders red."""
+    for value in ("REVIEW_REQUIRED", "CHANGES_REQUESTED"):
+        assert str(_review_cell(value).style) == "bold red"
+
+
+def test_review_cell_plain_none_for_empty_string() -> None:
+    """An empty reviewDecision (gitlab/gitea don't populate this field) shows plain 'None'."""
+    cell = _review_cell("")
+    assert str(cell.style) == ""
+    assert str(cell) == "None"
+
+
+def test_build_approve_summary_all_success() -> None:
+    """An all-success batch reports N/N approved with no failure lines."""
+    results = [
+        ApproveResult(pull_request=_pr(1), success=True, message="Approved"),
+        ApproveResult(pull_request=_pr(2), success=True, message="Approved"),
+    ]
+    summary = build_approve_summary(results)
+    assert "Approved 2/2 PR(s)." in summary
+    assert "FAILED" not in summary
+
+
+def test_build_approve_summary_mixed_results() -> None:
+    """A mixed batch reports the correct ratio and one FAILED line per failure."""
+    results = [
+        ApproveResult(pull_request=_pr(1), success=True, message="Approved"),
+        ApproveResult(pull_request=_pr(2), success=False, message="not permitted"),
+    ]
+    summary = build_approve_summary(results)
+    assert "Approved 1/2 PR(s)." in summary
+    assert "FAILED mxmehl/my-tool#2: not permitted" in summary
 
 
 @pytest.fixture
@@ -150,6 +202,20 @@ def test_merge_single_pr_skips_progress_notifications(app_for_merge: LsRenovateA
     messages = [call.args[0] for call in app_for_merge.notify.call_args_list]
     assert len(messages) == 1
     assert "Merged 1/1 PR(s)." in messages[0]
+
+
+def test_approve_single_pr_skips_progress_notifications(app_for_merge: LsRenovateApp) -> None:
+    """A single-PR approve only gets the final summary, not batch-progress noise."""
+    pr = _pr(1)
+    forge = MagicMock()
+    forge.approve_pr.return_value = ApproveResult(pull_request=pr, success=True, message="Approved")
+    app_for_merge.resolve_forge = lambda repo: forge
+
+    asyncio.run(app_for_merge._approve_and_refresh([pr]))
+
+    messages = [call.args[0] for call in app_for_merge.notify.call_args_list]
+    assert len(messages) == 1
+    assert "Approved 1/1 PR(s)." in messages[0]
 
 
 def test_merge_batch_reports_start_and_per_pr_progress() -> None:

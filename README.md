@@ -14,18 +14,20 @@ lsrenovate is a terminal UI for triaging open Renovate pull requests across many
 
 ## Columns
 
-The table shows two independent signals per PR/MR, color-coded where the forge can tell reliably:
+The table shows a few independent signals per PR/MR, color-coded where the forge can tell reliably:
 
 - **Mergeable** — whether the forge sees a merge conflict or unmet approval rule (e.g. `MERGEABLE`/`CONFLICTING`). This does not reflect CI outcome.
-- **Pipeline** — the CI/pipeline outcome for the PR's head commit (e.g. `success`/`failed`/`running`, or `N/A` if the repo has no CI). For GitLab and Gitea this requires a follow-up API call per PR to fetch, since the list endpoints don't expose it directly.
+- **Pipeline** — the CI/pipeline outcome for the PR's head commit (e.g. `success`/`failed`/`running`, or `N/A` if the repo has no CI). For GitLab and Gitea this requires a follow-up API call per PR to fetch, since the list endpoints don't expose it directly. GitHub's `BLOCKED` state (e.g. unmet required reviews or status checks) is treated as a failure here too.
+- **Review** — the PR's review decision (e.g. `APPROVED`/`REVIEW_REQUIRED`/`CHANGES_REQUESTED`), shown as plain `None` when empty. GitHub exposes this directly (`reviewDecision`); Gitea derives it from the PR's reviews plus the base branch's required-approval count (one extra API call each); GitLab doesn't expose an equivalent today.
 
-A PR is only color-coded ready when both are favorable; see the Gitea note below for where this can't be determined with full confidence.
+A PR is only color-coded ready when Mergeable and Pipeline are both favorable; see the Gitea note below for where this can't be determined with full confidence.
 
 ## Features
 
-- **Cross-repo overview** — one table showing every open Renovate (or custom-labeled) PR/MR across all your repos, with age, mergeable state, and pipeline status color-coded at a glance (where the forge can tell reliably — see the Gitea note below).
+- **Cross-repo overview** — one table showing every open Renovate (or custom-labeled) PR/MR across all your repos, with age, mergeable state, pipeline status, and (on GitHub) review decision color-coded at a glance (where the forge can tell reliably — see the Gitea note below).
 - **Multi-forge, multi-instance** — mix GitHub, GitLab, and Gitea repos in one registry, including multiple self-hosted GitLab or Gitea instances at once, each with its own credentials.
 - **Multi-select merge** — tick PRs with `space` and merge them all with `m`; failures don't block the rest, and you get a summary afterward.
+- **Multi-select approve** — tick PRs with `space` and approve them all with `a`; failures don't block the rest, and you get a summary afterward.
 - **Jump to context** — open a PR in your browser (`o`) or drop into a shell at its local checkout (`s`), with your GitHub token already exported into the shell environment.
 - **Configurable** — merge method, detection labels, sort order, and the project registry path are all overridable via a TOML config file.
 - **Concurrent fetching** — all repos are queried in parallel via a thread pool, so refreshing dozens of repos takes seconds, not minutes.
@@ -178,6 +180,7 @@ Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https:
 | ------- | ------------------------------------------------------ |
 | `space` | Toggle selection of the row under the cursor            |
 | `m`     | Merge selected PRs (or the focused one if none selected) |
+| `a`     | Approve selected PRs (or the focused one if none selected) |
 | `o`     | Open selected PRs (or the focused one) in the browser   |
 | `s`     | Check out the focused PR's branch (force-resetting any stale branch) and open a shell there |
 | `t`     | Cycle sort order (repo → age → title)                   |

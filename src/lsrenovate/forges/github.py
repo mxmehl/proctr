@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from lsrenovate.forges.base import (
+    ApproveResult,
     Forge,
     MergeResult,
     PullRequest,
@@ -23,7 +24,10 @@ from lsrenovate.forges.base import (
 if TYPE_CHECKING:
     from lsrenovate.projects import Repo
 
-LIST_FIELDS = "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus,headRefName"
+LIST_FIELDS = (
+    "createdAt,state,updatedAt,url,number,title,mergeable,mergeStateStatus,"
+    "headRefName,reviewDecision"
+)
 GH_EXECUTABLE = shutil.which("gh") or "gh"
 READY_MERGEABLE = "MERGEABLE"
 READY_MERGE_STATE = "CLEAN"
@@ -123,6 +127,7 @@ class GitHubForge(Forge):
                     pr["mergeable"] == READY_MERGEABLE
                     and pr["mergeStateStatus"] == READY_MERGE_STATE
                 ),
+                review_decision=pr["reviewDecision"],
             )
             for pr in raw_prs
         ]
@@ -150,6 +155,30 @@ class GitHubForge(Forge):
             )
         message = result.stderr.strip() or result.stdout.strip() or "gh pr merge failed"
         return MergeResult(pull_request=pull_request, success=False, message=message)
+
+    def approve_pr(self, pull_request: PullRequest) -> ApproveResult:
+        """Approve a single PR via gh pr review --approve, never raising."""
+        result = subprocess.run(  # noqa: S603
+            [
+                GH_EXECUTABLE,
+                "pr",
+                "review",
+                str(pull_request.number),
+                "-R",
+                pull_request.repo.full_name,
+                "--approve",
+            ],
+            capture_output=True,
+            text=True,
+            env=self._env(),
+            check=False,
+        )
+        if result.returncode == 0:
+            return ApproveResult(
+                pull_request=pull_request, success=True, message=result.stdout.strip()
+            )
+        message = result.stderr.strip() or result.stdout.strip() or "gh pr review --approve failed"
+        return ApproveResult(pull_request=pull_request, success=False, message=message)
 
     def checkout_pr(self, pull_request: PullRequest) -> tuple[bool, str]:
         """Check out a PR's branch via gh pr checkout -f, force-resetting any stale branch.

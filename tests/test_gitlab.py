@@ -238,6 +238,33 @@ def test_merge_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
     assert "merge conflict" in merge_result.message
 
 
+def test_approve_pr_success(pull_request: PullRequest) -> None:
+    """A successful glab mr approve invocation returns a successful ApproveResult."""
+    forge = GitLabForge(host="gitlab.example.com", token=None)
+    fake_ok = MagicMock(returncode=0, stdout="Approved\n", stderr="")
+
+    with patch("subprocess.run", return_value=fake_ok) as mock_run:
+        approve_result = forge.approve_pr(pull_request)
+
+    cmd = mock_run.call_args.args[0]
+    assert Path(cmd[0]).name == "glab"
+    assert cmd[1:3] == ["mr", "approve"]
+    assert cmd[3] == "42"
+    assert approve_result.success is True
+
+
+def test_approve_pr_failure_does_not_raise(pull_request: PullRequest) -> None:
+    """A failing glab mr approve invocation returns a failed ApproveResult, not raise."""
+    forge = GitLabForge(host="gitlab.example.com", token=None)
+    fake_fail = MagicMock(returncode=1, stdout="", stderr="not allowed to approve")
+
+    with patch("subprocess.run", return_value=fake_fail):
+        approve_result = forge.approve_pr(pull_request)
+
+    assert approve_result.success is False
+    assert "not allowed" in approve_result.message
+
+
 def test_checkout_pr_uses_force_flag_and_repo_cwd(pull_request: PullRequest) -> None:
     """Glab mr checkout is invoked with -f and cwd at the local repo."""
     forge = GitLabForge(host="gitlab.example.com", token=None)
