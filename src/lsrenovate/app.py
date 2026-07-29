@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import os
 import subprocess
@@ -20,18 +21,19 @@ from textual.widgets import DataTable, Footer, Header
 if TYPE_CHECKING:
     from textual.widgets.data_table import ColumnKey
 
+    from lsrenovate.forges.base import PullRequest
+
 from lsrenovate.config import load_config
-from lsrenovate.fetch import fetch_all_prs
+from lsrenovate.demo import demo_pull_requests
+from lsrenovate.fetch import FetchResult, fetch_all_prs
 from lsrenovate.forges.gitea import GiteaForge
 from lsrenovate.forges.github import GitHubForge
 from lsrenovate.forges.gitlab import GitLabForge
-from lsrenovate.projects import load_repos
+from lsrenovate.projects import Repo, load_repos
 
 if TYPE_CHECKING:
     from lsrenovate.config import Config
-    from lsrenovate.fetch import FetchResult
-    from lsrenovate.forges.base import ApproveResult, Forge, MergeResult, PullRequest
-    from lsrenovate.projects import Repo
+    from lsrenovate.forges.base import ApproveResult, Forge, MergeResult
 
 COLUMNS = ("Sel", "Repo", "Title", "Age", "Pipeline", "Mergeable", "Review", "#PR")
 CHECKED = "[X]"
@@ -271,8 +273,13 @@ class LsRenovateApp(App[None]):
         ("q", "quit", "Quit"),
     ]
 
-    def __init__(self, config: Config | None = None) -> None:
-        """Initialize the app, resolving configuration and the forge dispatcher."""
+    def __init__(self, config: Config | None = None, *, demo: bool = False) -> None:
+        """Initialize the app, resolving configuration and the forge dispatcher.
+
+        demo=True skips real forge fetching entirely, populating the table
+        with canned sample data instead (see _demo_pull_requests) — for
+        taking screenshots without needing real credentials or repos.
+        """
         super().__init__()
         self.config = config or load_config()
         self.resolve_forge = ForgeDispatcher(self.config)
@@ -280,6 +287,7 @@ class LsRenovateApp(App[None]):
         self.selected: set[str] = set()
         self._sel_column_key: ColumnKey | None = None  # set in on_mount
         self.sort_by = self.config.sort_by if self.config.sort_by in SORT_KEYS else DEFAULT_SORT_BY
+        self.demo = demo
 
     def compose(self) -> ComposeResult:
         """Build the app's widget tree."""
@@ -296,7 +304,10 @@ class LsRenovateApp(App[None]):
         column_keys = table.add_columns(*COLUMNS)
         self._sel_column_key = column_keys[COLUMNS.index("Sel")]
         self.app_resume_signal.subscribe(self, self._on_app_resume)
-        self.action_refresh_prs()
+        if self.demo:
+            self._populate_table(FetchResult(pull_requests=demo_pull_requests(), errors=[]))
+        else:
+            self.action_refresh_prs()
 
     def _on_app_resume(self, _app: App) -> None:
         """Force a full redraw after returning from a suspended shell.
@@ -564,7 +575,14 @@ class LsRenovateApp(App[None]):
 
 def main() -> None:
     """Run the lsrenovate TUI application."""
-    LsRenovateApp().run()
+    parser = argparse.ArgumentParser(description="A TUI for managing open Renovate PRs.")
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run with canned sample data instead of fetching real PRs (for screenshots).",
+    )
+    args = parser.parse_args()
+    LsRenovateApp(demo=args.demo).run()
 
 
 if __name__ == "__main__":

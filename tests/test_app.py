@@ -20,6 +20,7 @@ from lsrenovate.app import (
     build_merge_summary,
 )
 from lsrenovate.config import Config, GitHubConfig
+from lsrenovate.demo import demo_pull_requests
 from lsrenovate.forges.base import ApproveResult, MergeResult, PullRequest
 from lsrenovate.projects import Repo
 
@@ -44,6 +45,21 @@ def _pr(number: int) -> PullRequest:
         mergeable="MERGEABLE",
         pipeline_status="CLEAN",
     )
+
+
+def test_demo_pull_requests_covers_every_review_and_pipeline_state() -> None:
+    """--demo's sample data exercises every column color so a screenshot shows them all."""
+    prs = demo_pull_requests()
+
+    assert len(prs) > 0
+    assert {pr.repo.forge for pr in prs} == {"github", "gitlab", "gitea"}
+    assert {pr.pipeline_status for pr in prs} >= {"CLEAN", "UNSTABLE", "failed", "success"}
+    assert {pr.review_decision for pr in prs} >= {
+        "APPROVED",
+        "REVIEW_REQUIRED",
+        "CHANGES_REQUESTED",
+        "",
+    }
 
 
 def test_build_merge_summary_all_success() -> None:
