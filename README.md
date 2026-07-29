@@ -119,7 +119,7 @@ proctr reads an optional TOML config file at your platform's user config directo
 ```toml
 merge_method = "squash"                # "squash" (default), "merge", or "rebase"
 labels = []                            # default PR label(s) to filter on; all must match
-branch_prefixes = ["renovate/"]        # default branch-name prefix(es) to filter on; any one matches
+branch_prefixes = ["renovate/", "dependabot/"]  # default branch-name prefix(es) to filter on; any one matches
 match_mode = "and"                     # "and" (default) or "or" - how labels + branch_prefixes combine
 sort_by = "repo"                       # "repo" (default), "age", or "title"
 myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this config
@@ -157,7 +157,7 @@ login = "gitea.example.com"            # optional; defaults to the host itself
 
 proctr doesn't care which bot (or human) opened a PR — it matches purely on `labels` and/or `branch_prefixes`, so it works equally well for Renovate, Dependabot, another bot, or a hand-maintained convention, as long as it's consistent.
 
-By default, proctr matches PRs by branch prefix `renovate/` (Renovate's own default branch-naming convention), not by label — this works out of the box without any config for the most common case. If you use Dependabot instead, set `branch_prefixes = ["dependabot/"]` (Dependabot's default branch prefix); mix both (`["renovate/", "dependabot/"]`) if you run both across your repos.
+By default, proctr matches PRs by branch prefix `renovate/` or `dependabot/` (Renovate's and Dependabot's own default branch-naming conventions), not by label — this works out of the box without any config for the most common case, and covers both bots for free since branch-prefix matching is always done client-side (checking one extra prefix costs nothing extra). Add further prefixes (e.g. for another bot or your own convention) the same way.
 
 Bots don't always use the same label across every forge — for example, GitHub/GitLab repos might use `Renovate` while Gitea repos use `dependencies`. Set `labels` at the top level for the default used everywhere, and override it per forge (`[github]`) or per instance (`[gitlab."<host>"]`, `[gitea."<host>"]`) wherever it differs. Multiple labels are always matched with AND semantics — a PR must carry every configured label, not just one.
 
@@ -171,6 +171,12 @@ When both `labels` and `branch_prefixes` are configured (and non-empty) for the 
 - `"or"`: a PR is included if it satisfies either filter.
 
 `match_mode = "or"` has an extra cost on GitHub and GitLab: `gh`/`glab` can only pre-filter PRs by label server-side (not by branch prefix), so satisfying OR semantics correctly requires one additional, unfiltered list call per repo (to also catch PRs that match the branch prefix but not the label), whose results are merged with the label-filtered query. This only happens when `match_mode = "or"` **and** both filters are non-empty; the common cases (AND mode, or only one filter configured) stay a single call. Gitea has no server-side label filter at all, so it always does one call and matches everything client-side regardless of `match_mode`.
+
+### Large repos: prefer filtering by label
+
+`gh pr list`, `glab mr list`, and `tea pulls list` each default to fetching only the **first 30 open PRs/MRs** per repo, and proctr doesn't override this. Branch-prefix matching is always applied client-side to whatever page that call returns — it can't ask the forge to filter by branch prefix server-side. So if `labels` is empty for a forge/instance (e.g. you rely on the default `branch_prefixes = ["renovate/", "dependabot/"]` alone) and a repo has more than 30 open PRs of any kind, PRs beyond the first page are silently not considered, even if their branch matches.
+
+Configuring `labels` lets `gh`/`glab` pre-filter server-side instead of paging through everything, so this only matters for repos that both have >30 open PRs and rely on branch-prefix-only matching. If that applies to you, set a `labels` filter (in addition to, or instead of, `branch_prefixes`) to get complete, accurate results. Raising the page size isn't a good workaround: it just fetches more unfiltered data per call and increases the risk of API timeouts on large repos.
 
 ### Gitea limitation: no token management
 

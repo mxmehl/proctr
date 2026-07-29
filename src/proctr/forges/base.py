@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from proctr.config import DEFAULT_BRANCH_PREFIXES
+
 if TYPE_CHECKING:
     from datetime import datetime
 
@@ -65,18 +67,15 @@ def branch_matches_prefixes(branch: str, prefixes: list[str]) -> bool:
     return any(branch.startswith(prefix) for prefix in prefixes)
 
 
-DEFAULT_BRANCH_PREFIXES = ("renovate/",)
-
-
 def resolve_filter_defaults(
     labels: list[str] | None, branch_prefixes: list[str] | None
 ) -> tuple[list[str], list[str]]:
     """Apply the standalone default filters for a forge constructed with neither.
 
     Mirrors config.py's global default: with nothing configured at all,
-    match by Renovate's own branch-naming convention rather than a label
-    (which varies by project/forge). If either is explicitly given (even
-    as an empty list), no default is injected for it.
+    match by Renovate's and Dependabot's own branch-naming conventions
+    rather than a label (which varies by project/forge). If either is
+    explicitly given (even as an empty list), no default is injected for it.
     """
     if labels is None and branch_prefixes is None:
         return [], list(DEFAULT_BRANCH_PREFIXES)
