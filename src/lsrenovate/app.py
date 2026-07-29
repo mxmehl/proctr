@@ -263,7 +263,7 @@ class LsRenovateApp(App[None]):
         self.app_resume_signal.subscribe(self, self._on_app_resume)
         self.action_refresh_prs()
 
-    def _on_app_resume(self, _app: LsRenovateApp) -> None:
+    def _on_app_resume(self, _app: App) -> None:
         """Force a full redraw after returning from a suspended shell.
 
         ponytail: the terminal can be left in an inconsistent state by
