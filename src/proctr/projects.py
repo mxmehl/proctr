@@ -4,6 +4,8 @@ Local clone path convention: ~/Git/<group>/<project>, where <group> and
 <project> are the top-level/second-level keys under `myprojects` in the
 YAML file — these are a local naming convention and may differ from the
 repo's actual slug on the forge, which is always derived from the URL.
+A project entry may set an optional `path` key to override this
+convention with an explicit local clone path instead.
 """
 
 # SPDX-License-Identifier: Apache-2.0
@@ -74,6 +76,8 @@ def load_repos(myprojects_path: Path, *, forge: str | None = None) -> list[Repo]
             if forge is not None and repo_forge != forge:
                 continue
             url = meta.get("url", "")
+            path = meta.get("path")
+            local_path = Path(path).expanduser() if path else GIT_ROOT / group / name
             repos.append(
                 Repo(
                     group=group,
@@ -81,7 +85,7 @@ def load_repos(myprojects_path: Path, *, forge: str | None = None) -> list[Repo]
                     forge=repo_forge,
                     url=url,
                     owner=_owner_from_url(url),
-                    local_path=GIT_ROOT / group / name,
+                    local_path=local_path,
                 )
             )
     return repos
