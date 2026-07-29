@@ -64,6 +64,24 @@ def test_load_repos_derives_owner_for_gitlab_nested_subgroups(tmp_path: Path) ->
     assert repo.full_name == "group/subgroup/community/hugo-theme"
 
 
+def test_load_repos_path_overrides_local_path_convention(tmp_path: Path) -> None:
+    """An explicit `path` key overrides the ~/Git/<group>/<project> convention."""
+    fixture_path = tmp_path / "myprojects.yaml"
+    fixture_path.write_text(
+        "myprojects:\n"
+        "  github:\n"
+        "    my-tool:\n"
+        "      forge: github\n"
+        "      url: https://github.com/mxmehl/my-tool\n"
+        "      path: ~/code/my-tool\n"
+    )
+
+    repos = load_repos(fixture_path, forge="github")
+
+    assert len(repos) == 1
+    assert repos[0].local_path == Path("~/code/my-tool").expanduser()
+
+
 def test_full_name_uses_url_slug_not_yaml_key_when_they_differ(tmp_path: Path) -> None:
     """full_name must reflect the URL's real repo slug even if the myprojects.yaml key differs.
 

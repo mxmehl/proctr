@@ -76,23 +76,27 @@ uv sync --no-dev
 
 1. **Create a project registry** — a YAML file listing the repos to monitor:
 
-   ```yaml
-   myprojects:
-     github:
-       my-tool:
-         forge: github
-         url: https://github.com/myuser/my-tool
-     work:
-       internal-service:
-         forge: gitlab
-         url: https://company.example.com/team/internal-service
-     personal:
-       my-blog:
-         forge: gitea
-         url: https://myowngit.example.com/myuser/my-blog
-   ```
+    ```yaml
+    myprojects:
+      github:
+        my-tool: # Expected local path: ~/Git/github/my-tool
+          forge: github
+          url: https://github.com/myuser/my-tool
+      personal:
+        proctr:
+          forge: github
+          url: https://github.com/mxmehl/proctr
+          path: ~/Git/others/proctr  # optional; override the default local path
+        my-blog: # Expected local path: ~/Git/personal/my-blog
+          forge: gitea
+          url: https://myowngit.example.com/myuser/my-blog
+      work:
+        internal-service:
+          forge: gitlab
+          url: https://company.example.com/team/internal-service
+    ```
 
-   Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. `forge` must be `github`, `gitlab`, or `gitea`.
+   Repos are grouped by an arbitrary top-level key (e.g. `github`, `work`); this key also determines the local checkout path convention `~/Git/<group>/<project>`, used by the "open shell" action. `forge` must be `github`, `gitlab`, or `gitea`. If your local clones don't follow that convention, set an optional `path` on the project to use an explicit local path instead, e.g. `path: ~/code/my-tool`.
 
 2. **Provide a GitHub token**, in order of precedence:
    - `GITHUB_TOKEN` environment variable, or
