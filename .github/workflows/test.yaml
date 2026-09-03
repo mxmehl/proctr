@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/uvbuild
+      - uses: $/.github/actions/uvbuild
         with:
           python: ${{ matrix.python-version }}
           uv_args: --no-dev
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/uvbuild
+      - uses: $/.github/actions/uvbuild
       - name: Test with pytest
         run: uv run pytest
 
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/uvbuild
+      - uses: $/.github/actions/uvbuild
       - name: Lint with ruff
         run: uv run ruff check
 
@@ -88,7 +88,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/uvbuild
+      - uses: $/.github/actions/uvbuild
       - name: Check formatting with ruff
         run: uv run ruff format --check
 
@@ -98,7 +98,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/uvbuild
+      - uses: $/.github/actions/uvbuild
       - name: Test typing with ty
         run: uv run ty check
 
