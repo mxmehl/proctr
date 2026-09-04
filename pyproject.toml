@@ -3,7 +3,7 @@
 
 [project]
 name = "proctr"
-version = "1.1.0"
+version = "1.1.1"
 description = "Terminal UI for triaging open pull/merge requests across multiple repositories and forges"
 authors = [{ name = "Max Mehl", email = "mail@mehl.mx" }]
 readme = "README.md"

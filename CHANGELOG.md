@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.1](https://github.com/mxmehl/proctr/compare/v1.1.0...v1.1.1) (2026-09-04)
+
+
+### 🔥 Bug Fixes
+
+* **deps:** update dependency platformdirs to v4.11.1 ([#19](https://github.com/mxmehl/proctr/issues/19)) ([a315f7b](https://github.com/mxmehl/proctr/commit/a315f7b6a435375f579176911af9ccfde10a1cd5))
+* **deps:** update dependency platformdirs to v4.11.2 ([#24](https://github.com/mxmehl/proctr/issues/24)) ([e00cb0b](https://github.com/mxmehl/proctr/commit/e00cb0be391aa1a782a20d8b4253bc14e4762c7d))
+* **deps:** update dependency platformdirs to v4.11.3 ([#26](https://github.com/mxmehl/proctr/issues/26)) ([b749fd8](https://github.com/mxmehl/proctr/commit/b749fd8fd12f65d0fc4122fa8ba39c0a57da325a))
+* **deps:** update dependency platformdirs to v4.11.4 ([#29](https://github.com/mxmehl/proctr/issues/29)) ([c62db2d](https://github.com/mxmehl/proctr/commit/c62db2d4c4e648a2c8214f1447709a8288c3d32f))
+* **deps:** update dependency platformdirs to v4.11.5 ([#30](https://github.com/mxmehl/proctr/issues/30)) ([6593dfe](https://github.com/mxmehl/proctr/commit/6593dfe224f79cc42a2e99542d18eb002fba4eb6))
+* **deps:** update dependency platformdirs to v4.11.6 ([#33](https://github.com/mxmehl/proctr/issues/33)) ([37bbf77](https://github.com/mxmehl/proctr/commit/37bbf77967f40c3899f68861317a3ffaeaf73453))
+* **deps:** update dependency platformdirs to v4.11.7 ([#34](https://github.com/mxmehl/proctr/issues/34)) ([37d35be](https://github.com/mxmehl/proctr/commit/37d35bec40a2bfec73a8c3bee373059922ed6f78))
+
+
+### ⚙️ Chores
+
+* **deps:** lock file maintenance ([#23](https://github.com/mxmehl/proctr/issues/23)) ([d10b171](https://github.com/mxmehl/proctr/commit/d10b171c6619d319ff850c79a4dd2f447f281aa2))
+* **deps:** lock file maintenance ([#27](https://github.com/mxmehl/proctr/issues/27)) ([3b8fb9f](https://github.com/mxmehl/proctr/commit/3b8fb9ff2e78389a3c2277611a3ea934f08e18b5))
+* **deps:** lock file maintenance ([#28](https://github.com/mxmehl/proctr/issues/28)) ([1a54238](https://github.com/mxmehl/proctr/commit/1a54238fd95dde2bda4c345329c92ed2a04d6e1c))
+* **deps:** lock file maintenance ([#31](https://github.com/mxmehl/proctr/issues/31)) ([5b9ed59](https://github.com/mxmehl/proctr/commit/5b9ed59b2de448726b3222bd176b599162891e86))
+* **deps:** update astral-sh/setup-uv action to v10 ([#25](https://github.com/mxmehl/proctr/issues/25)) ([e76f03e](https://github.com/mxmehl/proctr/commit/e76f03e8bd436f7c1e0d23cf372eb0f1b6587223))
+* **deps:** update dependency uv_build to &gt;=0.12.3,&lt;0.13.0 ([#20](https://github.com/mxmehl/proctr/issues/20)) ([47934f0](https://github.com/mxmehl/proctr/commit/47934f0f0d63d70a57fe120df2bac628eae79d6f))
+* **deps:** update github actions group ([#22](https://github.com/mxmehl/proctr/issues/22)) ([7440765](https://github.com/mxmehl/proctr/commit/7440765014bfe175e1969b953140b5e37f517c8d))
+* **deps:** update zizmorcore/zizmor-action action to v0.6.3 ([#32](https://github.com/mxmehl/proctr/issues/32)) ([a880d3f](https://github.com/mxmehl/proctr/commit/a880d3f3e2646e37a6fd8a79cd66a5d799ca1736))
+
 ## [1.1.0](https://github.com/mxmehl/proctr/compare/v1.0.1...v1.1.0) (2026-07-29)
 
 
