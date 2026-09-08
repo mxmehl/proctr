@@ -15,12 +15,12 @@ from proctr.forges.gitea import GiteaForge
 from proctr.projects import Repo
 
 REPO = Repo(
-    group="src.mehl.mx",
+    group="fsfe",
     name="vpn-server",
     forge="gitea",
     url="https://git.fsfe.org/fsfe-system-hackers/vpn-server",
     owner="fsfe-system-hackers",
-    local_path=Path("~/Git/src.mehl.mx/vpn-server").expanduser(),
+    local_path=Path("~/Git/fsfe/vpn-server").expanduser(),
 )
 
 # Real shape captured live from `tea pr list -o json --fields
