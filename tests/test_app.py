@@ -4,6 +4,7 @@
 # SPDX-FileCopyrightText: 2026 Max Mehl <https://mehl.mx>
 
 import asyncio
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import proctr.app as app_module
 from proctr.app import (
     ProctrApp,
     _mergeable_cell,
@@ -286,3 +288,136 @@ def test_merge_batch_reports_start_and_per_pr_progress() -> None:
     assert "[2/3] FAILED mxmehl/my-tool#2: conflict" in messages[2]
     assert "[3/3] Merged mxmehl/my-tool#3" in messages[3]
     assert "Merged 2/3 PR(s)." in messages[4]
+
+
+def test_main_bare_invocation_runs_tui(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no subcommand, main() constructs and runs ProctrApp as before."""
+    monkeypatch.setattr(sys, "argv", ["proctr"])
+    mock_app = MagicMock()
+    mock_app_cls = MagicMock(return_value=mock_app)
+    monkeypatch.setattr(app_module, "ProctrApp", mock_app_cls)
+
+    app_module.main()
+
+    mock_app_cls.assert_called_once_with(demo=False)
+    mock_app.run.assert_called_once()
+
+
+def test_main_config_myprojects_dispatches_and_skips_tui(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`config myprojects` calls generate_myprojects and never constructs ProctrApp."""
+    root_dir = tmp_path / "root"
+    root_dir.mkdir()
+    output = tmp_path / "out.yaml"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["proctr", "config", "myprojects", "--root-dir", str(root_dir), "-o", str(output)],
+    )
+    mock_generate = MagicMock()
+    monkeypatch.setattr(app_module, "generate_myprojects", mock_generate)
+    mock_app_cls = MagicMock()
+    monkeypatch.setattr(app_module, "ProctrApp", mock_app_cls)
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_module.main()
+
+    assert exc_info.value.code == 0
+    mock_generate.assert_called_once_with(root_dir, output, force=False)
+    mock_app_cls.assert_not_called()
+
+
+def test_main_config_myprojects_defaults_to_configured_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without -o/--output, the configured myprojects_path from config.toml is used."""
+    root_dir = tmp_path / "root"
+    root_dir.mkdir()
+    configured_path = tmp_path / "configured-myprojects.yaml"
+    monkeypatch.setattr(
+        sys, "argv", ["proctr", "config", "myprojects", "--root-dir", str(root_dir)]
+    )
+    monkeypatch.setattr(
+        app_module,
+        "load_config",
+        MagicMock(
+            return_value=Config(
+                github=GitHubConfig(token=None),
+                merge_method="squash",
+                myprojects_path=configured_path,
+                sort_by="repo",
+                labels=[],
+                branch_prefixes=[],
+                match_mode="and",
+                gitlab_instances={},
+                gitea_instances={},
+            )
+        ),
+    )
+    mock_generate = MagicMock()
+    monkeypatch.setattr(app_module, "generate_myprojects", mock_generate)
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_module.main()
+
+    assert exc_info.value.code == 0
+    mock_generate.assert_called_once_with(root_dir, configured_path, force=False)
+
+
+def test_main_config_myprojects_rejects_non_directory_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A --root-dir that isn't a directory exits with an error, without calling generate."""
+    not_a_dir = tmp_path / "nope"
+    monkeypatch.setattr(
+        sys, "argv", ["proctr", "config", "myprojects", "--root-dir", str(not_a_dir)]
+    )
+    mock_generate = MagicMock()
+    monkeypatch.setattr(app_module, "generate_myprojects", mock_generate)
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_module.main()
+
+    assert exc_info.value.code == 1
+    mock_generate.assert_not_called()
+
+
+def test_main_config_myprojects_reports_error_without_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A FileExistsError from generate_myprojects becomes exit code 1, not a traceback."""
+    root_dir = tmp_path / "root"
+    root_dir.mkdir()
+    output = tmp_path / "out.yaml"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["proctr", "config", "myprojects", "--root-dir", str(root_dir), "-o", str(output)],
+    )
+    monkeypatch.setattr(
+        app_module,
+        "generate_myprojects",
+        MagicMock(side_effect=FileExistsError("already exists")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_module.main()
+
+    assert exc_info.value.code == 1
+
+
+def test_main_config_set_dispatches_and_skips_tui(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`config set` calls set_config_value and never constructs ProctrApp."""
+    monkeypatch.setattr(sys, "argv", ["proctr", "config", "set", "merge_method", "rebase"])
+    mock_set = MagicMock()
+    monkeypatch.setattr(app_module, "set_config_value", mock_set)
+    mock_app_cls = MagicMock()
+    monkeypatch.setattr(app_module, "ProctrApp", mock_app_cls)
+
+    with pytest.raises(SystemExit) as exc_info:
+        app_module.main()
+
+    assert exc_info.value.code == 0
+    mock_set.assert_called_once_with("merge_method", "rebase")
+    mock_app_cls.assert_not_called()

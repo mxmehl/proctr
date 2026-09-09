@@ -9,10 +9,13 @@ import argparse
 import asyncio
 import os
 import subprocess
+import sys
 import webbrowser
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
+import jsonschema
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Container
@@ -24,6 +27,7 @@ if TYPE_CHECKING:
     from proctr.forges.base import PullRequest
 
 from proctr.config import load_config
+from proctr.config_cli import generate_myprojects, set_config_value
 from proctr.demo import demo_pull_requests
 from proctr.fetch import FetchResult, fetch_all_prs
 from proctr.forges.gitea import GiteaForge
@@ -231,7 +235,7 @@ class ForgeDispatcher:
                 context=f'gitlab."{repo.host}"',
             )
             return GitLabForge(
-                host=instance.api_host or repo.host,
+                host=instance.ssh_host or repo.host,
                 token=instance.token,
                 labels=labels,
                 branch_prefixes=branch_prefixes,
@@ -573,8 +577,34 @@ class ProctrApp(App[None]):
         return env
 
 
+def _cmd_config_myprojects(args: argparse.Namespace) -> int:
+    """Handle `proctr config myprojects`; returns the process exit code."""
+    root_dir: Path = args.root_dir.expanduser()
+    if not root_dir.is_dir():
+        print(f"Not a directory: {root_dir}", file=sys.stderr)
+        return 1
+    target: Path = (args.output or load_config().myprojects_path).expanduser()
+    try:
+        generate_myprojects(root_dir, target, force=args.force)
+    except FileExistsError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    return 0
+
+
+def _cmd_config_set(args: argparse.Namespace) -> int:
+    """Handle `proctr config set`; returns the process exit code."""
+    try:
+        set_config_value(args.key, args.value)
+    except (ValueError, jsonschema.ValidationError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Set {args.key}")
+    return 0
+
+
 def main() -> None:
-    """Run the proctr TUI application."""
+    """Run the proctr TUI application, or dispatch to a `config` subcommand."""
     parser = argparse.ArgumentParser(
         description="A TUI for managing open pull/merge requests across multiple repos and forges."
     )
@@ -583,7 +613,42 @@ def main() -> None:
         action="store_true",
         help="Run with canned sample data instead of fetching real PRs (for screenshots).",
     )
+    subparsers = parser.add_subparsers(dest="command")
+
+    config_parser = subparsers.add_parser("config", help="Manage proctr's configuration")
+    config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
+
+    myprojects_parser = config_subparsers.add_parser(
+        "myprojects", help="Generate myprojects.yaml by scanning a directory for git repos"
+    )
+    myprojects_parser.add_argument(
+        "--root-dir", type=Path, required=True, help="Directory to scan for git repos"
+    )
+    myprojects_parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Where to write the generated file (default: config.toml's myprojects_path, "
+        "or next to config.toml if unset)",
+    )
+    myprojects_parser.add_argument(
+        "--force", action="store_true", help="Overwrite the output file if it already exists"
+    )
+
+    set_parser = config_subparsers.add_parser("set", help="Set a single config.toml value")
+    set_parser.add_argument(
+        "key", help='Dotted key path, e.g. merge_method or gitlab."host.example.com".token'
+    )
+    set_parser.add_argument("value", help="Value to set")
+
     args = parser.parse_args()
+
+    if args.command == "config":
+        if args.config_command == "myprojects":
+            sys.exit(_cmd_config_myprojects(args))
+        sys.exit(_cmd_config_set(args))
+
     ProctrApp(demo=args.demo).run()
 
 

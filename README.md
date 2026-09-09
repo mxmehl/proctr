@@ -101,11 +101,26 @@ uv sync --no-dev
 
    **Save this file somewhere** (e.g. `~/myprojects.yaml`) and point to it in your config file (see below).
 
+   **Or generate it automatically** by scanning a directory for git repos instead of writing it by hand:
+
+   ```sh
+   proctr config myprojects --root-dir ~/Git
+   ```
+
+   This walks `~/Git` for git repos (stopping at the first one found in each branch, so nested/vendored repos are skipped), reads each one's `origin` remote URL, and writes a myprojects.yaml to `myprojects_path` from config.toml, or next to config.toml if that's unset (override either with `-o`/`--output`; refuses to overwrite an existing file unless `--force` is passed). `github.com` and `gitlab.com` are recognized automatically; any other host is resolved interactively (you're asked whether it's a GitLab or Gitea instance) and remembered in config.toml, so it's never asked again. For GitLab, you're also asked to confirm the instance's HTTPS/API host (defaulting to the discovered one) — press Enter if the discovered host is already correct, or type the real one if the `origin` remote uses a separate SSH-only hostname (see `ssh_host` below); that's persisted alongside the new `[gitlab."<host>"]` table too. If the same remote repo is found cloned into more than one local path, only the first one encountered is kept (the rest are listed in the summary) — otherwise proctr would fetch and list that repo's PRs twice.
+
 2. **Provide token for your forges** (e.g. GitHub), in order of precedence:
    - `GITHUB_TOKEN` / `GITLAB_TOKEN` environment variable, or
    - `[github].token_command` (`[gitea.*/gitlab.*].token_command` respectively) in the config file — a command that prints the token to stdout, e.g. a password manager CLI, or
    - `[github].token` (`[gitea.*/gitlab.*].token` respectively) in the config file (plaintext), or
    - fall back to `gh`/`glab`/`tea`'s own stored authentication.
+
+   You can also set config.toml values from the command line instead of hand-editing the file:
+
+   ```sh
+   proctr config set merge_method rebase
+   proctr config set gitlab."gitlab.example.com".token glpat-xxxxx
+   ```
 
 3. **Run it:**
 
@@ -139,14 +154,14 @@ token = "ghp_..."                      # optional; env var GITHUB_TOKEN takes pr
 # match_mode = "or"                    # optional; overrides the global `match_mode` for GitHub only
 
 # One [gitlab."<host>"] table per self-hosted GitLab instance you use.
-# <host> must match the hostname in the repo's url in myprojects.yaml.
+# <host> is the HTTPS/API host and must match the hostname in the repo's url in myprojects.yaml.
 [gitlab."gitlab.example.com"]
 token = "glpat-..."                    # optional; or use token_command like above
 # token_command = ["pass", "gitlab"]   # optional; takes precedence over token
-# api_host = "ssh.gitlab.example.com"  # optional; only needed if `glab auth status`
-                                       # shows your token stored under a different
-                                       # hostname than the one in your repo URLs
-                                       # (e.g. glab auth login ran against an SSH host)
+# ssh_host = "ssh.gitlab.example.com"  # optional; set this to whatever hostname `glab auth status`
+                                       # shows your credentials stored under, if that differs
+                                       # from the HTTPS/API host above (also used by
+                                       # `proctr config myprojects` to recognize scanned SSH remotes)
 # labels = ["dependencies"]            # optional; overrides the global `labels` for this instance only
 # branch_prefixes = ["renovate/"]      # optional; overrides the global `branch_prefixes` for this instance only
 
