@@ -104,9 +104,17 @@ class GiteaForge(Forge):
             ],
             capture_output=True,
             text=True,
-            check=True,
+            check=False,
         )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "tea pulls list failed"
+            raise RuntimeError(message)
         raw_prs = json.loads(result.stdout)
+        if not isinstance(raw_prs, list):
+            # tea can exit 0 with a JSON error body instead of a non-zero
+            # exit code (e.g. {"message": "token is required", ...}).
+            msg = f"Unexpected tea pulls list response: {result.stdout.strip()}"
+            raise TypeError(msg)
         labels_enabled = bool(self._labels)
         branch_enabled = bool(self._branch_prefixes)
         required_approvals = self._required_approvals(repo)
@@ -175,11 +183,20 @@ class GiteaForge(Forge):
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
             return {}
+        if not isinstance(data, list):
+            # tea api can exit 0 with a JSON error body (e.g. {"message": "token is
+            # required", ...}) instead of a non-zero exit code — treat any
+            # non-list response the same as a hard failure.
+            return {}
         # ponytail: exact branch_name match only. Gitea allows glob patterns
         # (e.g. "release/*") in a protection rule's branch_name, not handled
         # here — upgrade path is fnmatch against the PR's base branch if a
         # real repo ever needs it.
-        return {rule["branch_name"]: rule.get("required_approvals", 0) for rule in data}
+        return {
+            rule["branch_name"]: rule.get("required_approvals", 0)
+            for rule in data
+            if isinstance(rule, dict) and "branch_name" in rule
+        }
 
     def _review_decision(
         self, repo: Repo, index: int, base_branch: str, required_approvals: dict[str, int]
@@ -229,9 +246,10 @@ class GiteaForge(Forge):
         if result.returncode != 0:
             return []
         try:
-            return json.loads(result.stdout)
+            data = json.loads(result.stdout)
         except json.JSONDecodeError:
             return []
+        return data if isinstance(data, list) else []
 
     def _combined_status(self, repo: Repo, ref: str) -> str | None:
         """Fetch the combined commit status for a PR's head ref via the Gitea API.
@@ -259,7 +277,7 @@ class GiteaForge(Forge):
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
             return None
-        return data.get("state")
+        return data.get("state") if isinstance(data, dict) else None
 
     def merge_pr(self, pull_request: PullRequest, *, method: str) -> MergeResult:
         """Attempt to merge a single PR via tea pulls merge, never raising."""
@@ -389,6 +407,8 @@ class GiteaForge(Forge):
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
+            return None
+        if not isinstance(data, list):
             return None
         pr = next((p for p in data if int(p["index"]) == index), None)
         return pr["head"] if pr else None

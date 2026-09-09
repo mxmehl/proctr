@@ -114,11 +114,19 @@ def test_dispatcher_builds_separate_instances_for_different_hosts() -> None:
     assert forge_a is not forge_b
 
 
-def test_dispatcher_uses_api_host_override_for_gitlab_env() -> None:
-    """When api_host is configured, GitLabForge is built with that host, not the URL host."""
+def test_dispatcher_uses_ssh_host_override_for_gitlab_env() -> None:
+    """When ssh_host is configured, GitLabForge is built with that host, not the URL host.
+
+    Regression test: `glab`'s own stored credentials (from `glab auth
+    login`) can be keyed under a different hostname than the instance's
+    real HTTPS/API host — verified live: an instance's credentials were
+    stored under an SSH-only hostname even though API calls go out to a
+    different HTTPS host. GITLAB_HOST must match wherever the token is
+    actually stored, or `glab` fails auth with no matching host.
+    """
     config = _config(
         gitlab_instances={
-            "gitlab.example.com": GitLabInstanceConfig(token="x", api_host="ssh.gitlab.example.com")
+            "gitlab.example.com": GitLabInstanceConfig(token="x", ssh_host="ssh.gitlab.example.com")
         }
     )
     dispatcher = ForgeDispatcher(config)
@@ -126,6 +134,16 @@ def test_dispatcher_uses_api_host_override_for_gitlab_env() -> None:
     forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
 
     assert forge._env()["GITLAB_HOST"] == "ssh.gitlab.example.com"
+
+
+def test_dispatcher_falls_back_to_url_host_for_gitlab_env_when_ssh_host_unset() -> None:
+    """Without ssh_host configured, GITLAB_HOST is the repo's own URL host, as before."""
+    config = _config(gitlab_instances={"gitlab.example.com": GitLabInstanceConfig(token="x")})
+    dispatcher = ForgeDispatcher(config)
+
+    forge = dispatcher(_repo("gitlab", "gitlab.example.com"))
+
+    assert forge._env()["GITLAB_HOST"] == "gitlab.example.com"
 
 
 def test_dispatcher_uses_per_instance_labels_over_global_default() -> None:
