@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
 import os
 import subprocess
 import sys
@@ -22,11 +23,12 @@ from textual.containers import Container
 from textual.widgets import DataTable, Footer, Header
 
 if TYPE_CHECKING:
+    from textual.app import SeverityLevel
     from textual.widgets.data_table import ColumnKey
 
     from proctr.forges.base import PullRequest
 
-from proctr.config import load_config
+from proctr.config import load_config, log_file_path
 from proctr.config_cli import generate_myprojects, set_config_value
 from proctr.demo import demo_pull_requests
 from proctr.fetch import FetchResult, fetch_all_prs
@@ -50,6 +52,23 @@ SORT_KEYS: dict[str, tuple[str, ...]] = {
     "title": ("title",),
 }
 DEFAULT_SORT_BY = "repo"
+
+logger = logging.getLogger("proctr")
+
+
+def configure_logging() -> None:
+    """Set up file logging for warnings/errors that also show as a toast notification.
+
+    The TUI occupies the terminal's alternate screen, so this file (see
+    log_file_path) is the only durable record of what a session's
+    warnings/errors actually said once their toast has scrolled away.
+    """
+    log_path = log_file_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    handler = logging.FileHandler(log_path)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.WARNING)
 
 
 def _sort_value(pr: PullRequest, field: str) -> str | datetime:
@@ -300,10 +319,24 @@ class ProctrApp(App[None]):
             yield DataTable(id="pr-table", cursor_type="row")
         yield Footer()
 
+    def _notify(
+        self, message: str, *, severity: SeverityLevel = "information", timeout: float = 4
+    ) -> None:
+        """Show a toast notification and, for warnings/errors, also log it to log_file_path().
+
+        The toast disappears once its timeout elapses; the log file is the
+        durable record of what it said.
+        """
+        self.notify(message, severity=severity, timeout=timeout)
+        if severity == "warning":
+            logger.warning(message)
+        elif severity == "error":
+            logger.error(message)
+
     def on_mount(self) -> None:
         """Set up the table columns and trigger the initial PR fetch."""
         if self.config.github.token_command_error:
-            self.notify(self.config.github.token_command_error, severity="warning", timeout=10)
+            self._notify(self.config.github.token_command_error, severity="warning", timeout=10)
         table = self.query_one(DataTable)
         column_keys = table.add_columns(*COLUMNS)
         self._sel_column_key = column_keys[COLUMNS.index("Sel")]
@@ -350,7 +383,7 @@ class ProctrApp(App[None]):
         self.sub_title = f"{len(self.pull_requests)} open PR(s){error_note}"
         if result.errors:
             for err in result.errors:
-                self.notify(f"{err.repo.full_name}: {err.error}", severity="warning", timeout=8)
+                self._notify(f"{err.repo.full_name}: {err.error}", severity="warning", timeout=8)
 
     def _render_table(self) -> None:
         """Re-sort (per self.sort_by) and redraw the table from self.pull_requests."""
@@ -441,7 +474,7 @@ class ProctrApp(App[None]):
                 if result.success:
                     self.notify(f"[{index}/{total}] Merged {_pr_key(pr)}", timeout=5)
                 else:
-                    self.notify(
+                    self._notify(
                         f"[{index}/{total}] FAILED {_pr_key(pr)}: {result.message}",
                         severity="error",
                         timeout=8,
@@ -449,7 +482,7 @@ class ProctrApp(App[None]):
 
         summary = build_merge_summary(results)
         any_failed = any(not r.success for r in results)
-        self.notify(summary, severity="warning" if any_failed else "information", timeout=10)
+        self._notify(summary, severity="warning" if any_failed else "information", timeout=10)
 
         self.selected.clear()
         await self._fetch_and_populate()
@@ -478,7 +511,7 @@ class ProctrApp(App[None]):
                 if result.success:
                     self.notify(f"[{index}/{total}] Approved {_pr_key(pr)}", timeout=5)
                 else:
-                    self.notify(
+                    self._notify(
                         f"[{index}/{total}] FAILED {_pr_key(pr)}: {result.message}",
                         severity="error",
                         timeout=8,
@@ -486,7 +519,7 @@ class ProctrApp(App[None]):
 
         summary = build_approve_summary(results)
         any_failed = any(not r.success for r in results)
-        self.notify(summary, severity="warning" if any_failed else "information", timeout=10)
+        self._notify(summary, severity="warning" if any_failed else "information", timeout=10)
 
         self.selected.clear()
         await self._fetch_and_populate()
@@ -523,7 +556,7 @@ class ProctrApp(App[None]):
 
         local_path = pr.repo.local_path
         if not local_path.is_dir():
-            self.notify(f"Local path does not exist: {local_path}", severity="error")
+            self._notify(f"Local path does not exist: {local_path}", severity="error")
             return
 
         self.run_worker(self._checkout_and_open_shell(pr), exclusive=True)
@@ -540,7 +573,7 @@ class ProctrApp(App[None]):
         forge = self.resolve_forge(pr.repo)
         success, message = await asyncio.to_thread(forge.checkout_pr, pr)
         if not success:
-            self.notify(message or f"Checkout failed for {_pr_key(pr)}", severity="error")
+            self._notify(message or f"Checkout failed for {_pr_key(pr)}", severity="error")
 
         shell = os.environ.get("SHELL", "/bin/sh")
         env = self._shell_env()
@@ -649,6 +682,7 @@ def main() -> None:
             sys.exit(_cmd_config_myprojects(args))
         sys.exit(_cmd_config_set(args))
 
+    configure_logging()
     ProctrApp(demo=args.demo).run()
 
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import jsonschema
-from platformdirs import user_config_dir
+from platformdirs import user_config_dir, user_log_dir
 
 APP_NAME = "proctr"
 DEFAULT_MERGE_METHOD = "squash"
@@ -98,6 +98,17 @@ def config_file_path() -> Path:
 def default_myprojects_path() -> Path:
     """Return the default myprojects.yaml path: alongside config.toml."""
     return Path(user_config_dir(APP_NAME)) / "myprojects.yaml"
+
+
+def log_file_path() -> Path:
+    """Return the path to proctr's log file, in the platform log dir.
+
+    The TUI runs on the terminal's alternate screen, so stdout/stderr
+    aren't visible during a session — warnings and errors that today only
+    surface as a transient toast notification are also written here, so
+    they're accessible after the fact (e.g. `tail -f` in another terminal).
+    """
+    return Path(user_log_dir(APP_NAME)) / "proctr.log"
 
 
 def _run_token_command(command: list[str]) -> str:

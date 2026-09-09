@@ -20,6 +20,8 @@ from proctr.app import (
     _review_cell,
     build_approve_summary,
     build_merge_summary,
+    configure_logging,
+    logger,
 )
 from proctr.config import Config, GitHubConfig
 from proctr.demo import demo_pull_requests
@@ -421,3 +423,44 @@ def test_main_config_set_dispatches_and_skips_tui(monkeypatch: pytest.MonkeyPatc
     assert exc_info.value.code == 0
     mock_set.assert_called_once_with("merge_method", "rebase")
     mock_app_cls.assert_not_called()
+
+
+def test_configure_logging_writes_to_log_file_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """configure_logging() sets up a FileHandler at log_file_path(), and _notify writes to it."""
+    log_path = tmp_path / "logs" / "proctr.log"
+    monkeypatch.setattr(app_module, "log_file_path", lambda: log_path)
+    # Reset any handler a previous test/run may have attached to the shared logger.
+    logger.handlers.clear()
+
+    configure_logging()
+    try:
+        myprojects_path = tmp_path / "myprojects.yaml"
+        myprojects_path.write_text("myprojects: {}\n")
+        config = Config(
+            github=GitHubConfig(token=None),
+            merge_method="squash",
+            myprojects_path=myprojects_path,
+            sort_by="repo",
+            labels=[],
+            branch_prefixes=[],
+            match_mode="and",
+            gitlab_instances={},
+            gitea_instances={},
+        )
+        app = ProctrApp(config=config)
+
+        async def scenario() -> None:
+            async with app.run_test():
+                app.notify = MagicMock()
+                app._notify("disk on fire", severity="error")
+
+        asyncio.run(scenario())
+    finally:
+        for handler in logger.handlers:
+            handler.close()
+        logger.handlers.clear()
+
+    assert log_path.is_file()
+    assert "ERROR disk on fire" in log_path.read_text()

@@ -212,6 +212,10 @@ The `login` field in `[gitea."<host>"]` just tells proctr which registered login
 
 Gitea's own `mergeable` field is [documented as sometimes wrong upstream](https://github.com/go-gitea/gitea/issues/19755) — it can report `false` for a PR that's actually mergeable. proctr still color-codes it, though: attempting to merge a PR that turns out to have a real conflict fails cleanly with an error rather than silently doing anything harmful, so a wrong "mergeable" signal only costs you one failed merge attempt, not a bad merge. Pipeline/CI status is fetched separately via the Gitea API's combined commit status endpoint (one follow-up call per PR) and factors into the same color, alongside `mergeable`.
 
+### Logs
+
+The TUI runs on the terminal's alternate screen, so warnings and errors (e.g. a repo fetch failure, a failed merge/approve, a token_command that failed) only ever show as a toast notification that disappears after a few seconds. Every one of those is also written to a log file at your platform's user log directory (e.g. `~/Library/Logs/proctr/proctr.log` on macOS, `~/.local/state/proctr/log/proctr.log` on Linux), so you can review or `tail -f` it after the fact. Informational notifications (e.g. "Sorted by age") are toast-only and not logged.
+
 ## Keybindings
 
 | Key     | Action                                                |
