@@ -235,24 +235,24 @@ def test_config_gitlab_instance_uses_token_command(tmp_path: Path) -> None:
     assert cfg.gitlab_instances["gitlab.example.com"].token_command_error is None
 
 
-def test_config_gitlab_instance_api_host_override(tmp_path: Path) -> None:
-    """api_host overrides the GITLAB_HOST sent to glab when it differs from the URL host."""
+def test_config_gitlab_instance_ssh_host_parsed(tmp_path: Path) -> None:
+    """ssh_host is parsed for use by generate_myprojects (not sent to glab as GITLAB_HOST)."""
     config_path = tmp_path / "config.toml"
-    config_path.write_text('[gitlab."gitlab.example.com"]\napi_host = "ssh.gitlab.example.com"\n')
+    config_path.write_text('[gitlab."gitlab.example.com"]\nssh_host = "ssh.gitlab.example.com"\n')
 
     cfg = load_config(config_path)
 
-    assert cfg.gitlab_instances["gitlab.example.com"].api_host == "ssh.gitlab.example.com"
+    assert cfg.gitlab_instances["gitlab.example.com"].ssh_host == "ssh.gitlab.example.com"
 
 
-def test_config_gitlab_instance_api_host_defaults_to_none(tmp_path: Path) -> None:
-    """Without an explicit api_host, it defaults to None (dispatcher falls back to the URL host)."""
+def test_config_gitlab_instance_ssh_host_defaults_to_none(tmp_path: Path) -> None:
+    """Without an explicit ssh_host, it defaults to None (no SSH-host alias configured)."""
     config_path = tmp_path / "config.toml"
     config_path.write_text('[gitlab."gitlab.example.com"]\ntoken = "x"\n')
 
     cfg = load_config(config_path)
 
-    assert cfg.gitlab_instances["gitlab.example.com"].api_host is None
+    assert cfg.gitlab_instances["gitlab.example.com"].ssh_host is None
 
 
 def test_config_gitlab_instance_labels_override(tmp_path: Path) -> None:

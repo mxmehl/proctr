@@ -55,8 +55,10 @@ def pull_request() -> PullRequest:
 def test_list_matching_prs_builds_correct_command_and_parses_json() -> None:
     """Glab mr list is invoked with the right host/token/flags, and JSON is parsed."""
     forge = GitLabForge(host="gitlab.example.com", token="secret-token")
-    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
-    view_result = MagicMock(stdout=json.dumps({"head_pipeline": {"status": "success"}}))
+    list_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_MR_JSON))
+    view_result = MagicMock(
+        returncode=0, stdout=json.dumps({"head_pipeline": {"status": "success"}})
+    )
     with patch("subprocess.run", side_effect=[list_result, view_result]) as mock_run:
         prs = forge.list_matching_prs(REPO)
 
@@ -87,8 +89,10 @@ def test_list_prs_not_ready_when_conflicting() -> None:
     """
     forge = GitLabForge(host="gitlab.example.com", token=None)
     conflicting_mr = [{**FAKE_MR_JSON[0], "has_conflicts": True}]
-    list_result = MagicMock(stdout=json.dumps(conflicting_mr))
-    view_result = MagicMock(stdout=json.dumps({"head_pipeline": {"status": "success"}}))
+    list_result = MagicMock(returncode=0, stdout=json.dumps(conflicting_mr))
+    view_result = MagicMock(
+        returncode=0, stdout=json.dumps({"head_pipeline": {"status": "success"}})
+    )
 
     with patch("subprocess.run", side_effect=[list_result, view_result]):
         prs = forge.list_matching_prs(REPO)
@@ -106,8 +110,10 @@ def test_list_prs_not_ready_when_pipeline_failed() -> None:
     real MR that showed as mergeable despite a failed pipeline.
     """
     forge = GitLabForge(host="gitlab.example.com", token=None)
-    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
-    view_result = MagicMock(stdout=json.dumps({"head_pipeline": {"status": "failed"}}))
+    list_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_MR_JSON))
+    view_result = MagicMock(
+        returncode=0, stdout=json.dumps({"head_pipeline": {"status": "failed"}})
+    )
 
     with patch("subprocess.run", side_effect=[list_result, view_result]):
         prs = forge.list_matching_prs(REPO)
@@ -120,8 +126,8 @@ def test_list_prs_not_ready_when_pipeline_failed() -> None:
 def test_list_prs_ready_when_no_pipeline_exists() -> None:
     """A repo with no CI at all (head_pipeline is None) doesn't block merge_ready."""
     forge = GitLabForge(host="gitlab.example.com", token=None)
-    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
-    view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
+    list_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_MR_JSON))
+    view_result = MagicMock(returncode=0, stdout=json.dumps({"head_pipeline": None}))
 
     with patch("subprocess.run", side_effect=[list_result, view_result]):
         prs = forge.list_matching_prs(REPO)
@@ -130,10 +136,28 @@ def test_list_prs_ready_when_no_pipeline_exists() -> None:
     assert prs[0].merge_ready is True
 
 
+def test_list_matching_prs_raises_with_glab_stderr_on_failure() -> None:
+    """A failing glab mr list surfaces glab's own stderr, not just a bare exit-code message.
+
+    Regression test: subprocess.run(check=True) previously raised
+    CalledProcessError, whose str() is just "... returned non-zero exit
+    status 1" with no indication of *why* (e.g. an auth/host mismatch) —
+    exactly the kind of message that ends up in the log with no way to
+    diagnose it.
+    """
+    forge = GitLabForge(host="gitlab.example.com", token=None)
+    fake_fail = MagicMock(returncode=1, stdout="", stderr="unauthorized: bad token")
+    with (
+        patch("subprocess.run", return_value=fake_fail),
+        pytest.raises(RuntimeError, match="unauthorized: bad token"),
+    ):
+        forge.list_matching_prs(REPO)
+
+
 def test_list_prs_with_multiple_configured_labels() -> None:
     """Multiple configured labels produce one repeated --label flag per label."""
     forge = GitLabForge(host="gitlab.example.com", token=None, labels=["Renovate", "dependencies"])
-    fake_result = MagicMock(stdout=json.dumps([]))
+    fake_result = MagicMock(returncode=0, stdout=json.dumps([]))
     with patch("subprocess.run", return_value=fake_result) as mock_run:
         forge.list_matching_prs(REPO)
 
@@ -148,8 +172,8 @@ def test_branch_prefix_only_mode_disables_label_flags() -> None:
     forge = GitLabForge(
         host="gitlab.example.com", token=None, labels=[], branch_prefixes=["renovate/"]
     )
-    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
-    view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
+    list_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_MR_JSON))
+    view_result = MagicMock(returncode=0, stdout=json.dumps({"head_pipeline": None}))
     with patch("subprocess.run", side_effect=[list_result, view_result]) as mock_run:
         prs = forge.list_matching_prs(REPO)
 
@@ -167,7 +191,7 @@ def test_and_mode_narrows_label_filtered_results_by_branch_prefix() -> None:
         branch_prefixes=["dependabot/"],
         match_mode="and",
     )
-    list_result = MagicMock(stdout=json.dumps(FAKE_MR_JSON))
+    list_result = MagicMock(returncode=0, stdout=json.dumps(FAKE_MR_JSON))
     with patch("subprocess.run", return_value=list_result) as mock_run:
         prs = forge.list_matching_prs(REPO)
 
@@ -189,9 +213,11 @@ def test_or_mode_unions_label_and_branch_matches_with_two_queries() -> None:
         branch_prefixes=["renovate/"],
         match_mode="or",
     )
-    label_filtered_result = MagicMock(stdout=json.dumps([label_only_mr, in_both_mr]))
-    unfiltered_result = MagicMock(stdout=json.dumps([label_only_mr, branch_only_mr, in_both_mr]))
-    view_result = MagicMock(stdout=json.dumps({"head_pipeline": None}))
+    label_filtered_result = MagicMock(returncode=0, stdout=json.dumps([label_only_mr, in_both_mr]))
+    unfiltered_result = MagicMock(
+        returncode=0, stdout=json.dumps([label_only_mr, branch_only_mr, in_both_mr])
+    )
+    view_result = MagicMock(returncode=0, stdout=json.dumps({"head_pipeline": None}))
 
     with patch(
         "subprocess.run",

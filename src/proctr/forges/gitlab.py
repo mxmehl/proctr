@@ -81,8 +81,11 @@ class GitLabForge(Forge):
             capture_output=True,
             text=True,
             env=self._env(),
-            check=True,
+            check=False,
         )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "glab mr list failed"
+            raise RuntimeError(message)
         return json.loads(result.stdout)
 
     def list_matching_prs(self, repo: Repo) -> list[PullRequest]:
@@ -162,8 +165,11 @@ class GitLabForge(Forge):
             capture_output=True,
             text=True,
             env=self._env(),
-            check=True,
+            check=False,
         )
+        if result.returncode != 0:
+            message = result.stderr.strip() or result.stdout.strip() or "glab mr view failed"
+            raise RuntimeError(message)
         mr = json.loads(result.stdout)
         head_pipeline = mr.get("head_pipeline")
         return head_pipeline.get("status") if head_pipeline else None

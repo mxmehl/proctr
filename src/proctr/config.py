@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import jsonschema
-from platformdirs import user_config_dir
+from platformdirs import user_config_dir, user_log_dir
 
 APP_NAME = "proctr"
 DEFAULT_MERGE_METHOD = "squash"
@@ -39,7 +39,7 @@ _FILTER_PROPERTIES = {
 }
 
 # Validates structure/types/enums only (TOML shape, allowed values, table keys).
-# Cross-field logic (token precedence, login/api_host defaulting, "at least one
+# Cross-field logic (token precedence, login/ssh_host defaulting, "at least one
 # filter enabled") is Python-side, in load_config() and ForgeDispatcher._build.
 CONFIG_SCHEMA = {
     "type": "object",
@@ -67,7 +67,7 @@ CONFIG_SCHEMA = {
                     "properties": {
                         "token": {"type": "string"},
                         "token_command": {"type": "array", "items": {"type": "string"}},
-                        "api_host": {"type": "string", "minLength": 1},
+                        "ssh_host": {"type": "string", "minLength": 1},
                         **_FILTER_PROPERTIES,
                     },
                 },
@@ -98,6 +98,17 @@ def config_file_path() -> Path:
 def default_myprojects_path() -> Path:
     """Return the default myprojects.yaml path: alongside config.toml."""
     return Path(user_config_dir(APP_NAME)) / "myprojects.yaml"
+
+
+def log_file_path() -> Path:
+    """Return the path to proctr's log file, in the platform log dir.
+
+    The TUI runs on the terminal's alternate screen, so stdout/stderr
+    aren't visible during a session — warnings and errors that today only
+    surface as a transient toast notification are also written here, so
+    they're accessible after the fact (e.g. `tail -f` in another terminal).
+    """
+    return Path(user_log_dir(APP_NAME)) / "proctr.log"
 
 
 def _run_token_command(command: list[str]) -> str:
@@ -182,16 +193,29 @@ class GitHubConfig:
 class GitLabInstanceConfig:
     """Per-host GitLab credentials, resolved the same way as the GitHub token.
 
-    api_host overrides the value sent as GITLAB_HOST to `glab`, for the
-    case where glab's own stored auth is keyed under a different hostname
-    than the one used in myprojects.yaml URLs (e.g. glab auth login was
-    run against an SSH-style host like "ssh.gitlab.example.com" while
-    repo URLs use the plain API host "gitlab.example.com"). Defaults to
-    the table's own host key when not set.
+    The table's own host key is the canonical HTTPS/API host, used to
+    build myprojects.yaml URLs and to resolve which table a scanned repo
+    belongs to. ssh_host serves two related purposes when set:
+
+    1. It's sent to `glab` as `GITLAB_HOST` instead of the table key —
+       needed because `glab auth login`'s own stored credentials are
+       keyed by whatever hostname was used at login time, which for some
+       instances is the SSH-only hostname, not the HTTPS/API one (verified
+       live: `glab auth status` showed credentials stored under
+       "ssh.git.example.com" even though API calls go out over HTTPS to
+       "git.example.com" — passing the HTTPS host as GITLAB_HOST made
+       `glab` fail to find any token for that host).
+    2. It lets `generate_myprojects` recognize a scanned repo whose
+       `origin` remote uses that same SSH-only hostname and map it back
+       to this table.
+
+    Check `glab auth status` to see which hostname your own credentials
+    are actually stored under, and set ssh_host to that value if it
+    differs from this table's key.
     """
 
     token: str | None
-    api_host: str | None = None
+    ssh_host: str | None = None
     labels: list[str] | None = None
     branch_prefixes: list[str] | None = None
     match_mode: str | None = None
@@ -251,7 +275,7 @@ def _load_gitlab_instances(file_data: dict) -> dict[str, GitLabInstanceConfig]:
         labels, branch_prefixes, match_mode = _resolve_table_filters(table)
         instances[host] = GitLabInstanceConfig(
             token=token,
-            api_host=table.get("api_host"),
+            ssh_host=table.get("ssh_host"),
             labels=labels,
             branch_prefixes=branch_prefixes,
             match_mode=match_mode,
