@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.0.1](https://github.com/mxmehl/proctr/compare/v2.0.0...v2.0.1) (2026-10-03)
+
+
+### 🔥 Bug Fixes
+
+* **deps:** update dependency platformdirs to v4.11.10 ([#46](https://github.com/mxmehl/proctr/issues/46)) ([d4ac1a2](https://github.com/mxmehl/proctr/commit/d4ac1a28a1445bcfa6e9494db37fd3eec3971e9b))
+* **deps:** update dependency platformdirs to v4.11.11 ([#47](https://github.com/mxmehl/proctr/issues/47)) ([51b3496](https://github.com/mxmehl/proctr/commit/51b34964be78d3c3e7159fe2a70aa36d7a402e64))
+* **deps:** update dependency platformdirs to v4.11.12 ([#48](https://github.com/mxmehl/proctr/issues/48)) ([b4cfa88](https://github.com/mxmehl/proctr/commit/b4cfa88439b0989d95ce8e0c06d3669fcea6bd37))
+* **deps:** update dependency platformdirs to v4.11.15 ([#51](https://github.com/mxmehl/proctr/issues/51)) ([32102ff](https://github.com/mxmehl/proctr/commit/32102ff918ca8264f8da501336cd29fce1df880c))
+* **deps:** update dependency platformdirs to v4.11.9 ([#43](https://github.com/mxmehl/proctr/issues/43)) ([e53aeb8](https://github.com/mxmehl/proctr/commit/e53aeb8b55cceb6bae2f0d2b57ea53f7bb5d60c5))
+* **deps:** update dependency platformdirs to v4.12.0 ([#52](https://github.com/mxmehl/proctr/issues/52)) ([fea4be4](https://github.com/mxmehl/proctr/commit/fea4be48da814b2f4325ee384cf482df8a67ddb0))
+* **deps:** update dependency platformdirs to v4.12.1 ([#53](https://github.com/mxmehl/proctr/issues/53)) ([251aeea](https://github.com/mxmehl/proctr/commit/251aeea330368a11728a9d40e424f716e5cb04ee))
+* **deps:** update dependency platformdirs to v4.12.2 ([#54](https://github.com/mxmehl/proctr/issues/54)) ([c65c40d](https://github.com/mxmehl/proctr/commit/c65c40d29af88f19627b0ac016de7979bfb7af05))
+
+
+### ⚙️ Chores
+
+* **deps:** lock file maintenance ([#45](https://github.com/mxmehl/proctr/issues/45)) ([4a493a9](https://github.com/mxmehl/proctr/commit/4a493a92a19c8c186fe5fc5e84fb805f15323266))
+* **deps:** lock file maintenance ([#50](https://github.com/mxmehl/proctr/issues/50)) ([d99a03d](https://github.com/mxmehl/proctr/commit/d99a03d1cc0bed6307b38141ee0e877c37b4eaa4))
+* **deps:** update astral-sh/setup-uv action to v10.2.0 ([#49](https://github.com/mxmehl/proctr/issues/49)) ([39578c5](https://github.com/mxmehl/proctr/commit/39578c5afa3eed94a4bba55cacae2e161e9f02e1))
+* **deps:** update dependency ubuntu to v26 ([#42](https://github.com/mxmehl/proctr/issues/42)) ([ead142d](https://github.com/mxmehl/proctr/commit/ead142d956e73db15dc1944b2e23b3cc0bbf5002))
+
 ## [2.0.0](https://github.com/mxmehl/proctr/compare/v1.1.0...v2.0.0) (2026-09-15)
 
 
