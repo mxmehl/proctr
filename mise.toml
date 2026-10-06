@@ -6,7 +6,7 @@ use_versions_host_track = false
 
 [tools]
 python = "3.14"
-uv = "latest"
+uv = "0.12"
 
 [vars]
 app_dir = "src"
