@@ -33,6 +33,8 @@ def _config(**overrides: object) -> Config:
         "merge_method": "squash",
         "myprojects_path": Path("/dev/null"),
         "sort_by": "repo",
+        "title_min_width": 40,
+        "title_max_width": None,
         "labels": ["Renovate"],
         "branch_prefixes": [],
         "match_mode": "and",

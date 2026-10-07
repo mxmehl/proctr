@@ -13,6 +13,7 @@ from proctr.config import (
     DEFAULT_MATCH_MODE,
     DEFAULT_MERGE_METHOD,
     DEFAULT_SORT_BY,
+    DEFAULT_TITLE_MIN_WIDTH,
     load_config,
 )
 
@@ -42,6 +43,8 @@ def test_config_defaults_when_no_file_and_no_env(monkeypatch: pytest.MonkeyPatch
     assert cfg.labels == []
     assert cfg.branch_prefixes == DEFAULT_BRANCH_PREFIXES
     assert cfg.match_mode == DEFAULT_MATCH_MODE
+    assert cfg.title_min_width == DEFAULT_TITLE_MIN_WIDTH
+    assert cfg.title_max_width is None
 
 
 def test_config_invalid_merge_method_raises(tmp_path: Path) -> None:
@@ -344,3 +347,43 @@ def test_config_gitea_instance_branch_prefixes_override(tmp_path: Path) -> None:
 
     assert cfg.gitea_instances["gitea.example.com"].branch_prefixes == ["renovate/"]
     assert cfg.gitea_instances["gitea.example.com"].labels == []
+
+
+def test_config_title_min_width_explicit_value(tmp_path: Path) -> None:
+    """An explicit title_min_width round-trips through load_config."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("title_min_width = 60\n")
+
+    cfg = load_config(config_path)
+
+    assert cfg.title_min_width == 60
+    assert cfg.title_max_width is None
+
+
+def test_config_title_max_width_explicit_value(tmp_path: Path) -> None:
+    """An explicit title_max_width round-trips through load_config."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("title_min_width = 30\ntitle_max_width = 80\n")
+
+    cfg = load_config(config_path)
+
+    assert cfg.title_min_width == 30
+    assert cfg.title_max_width == 80
+
+
+def test_config_title_max_width_below_min_raises(tmp_path: Path) -> None:
+    """title_max_width set below title_min_width raises a ValueError."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text("title_min_width = 50\ntitle_max_width = 30\n")
+
+    with pytest.raises(ValueError, match="title_max_width"):
+        load_config(config_path)
+
+
+def test_config_title_width_invalid_type_raises(tmp_path: Path) -> None:
+    """A non-integer title_min_width raises a schema ValidationError."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('title_min_width = "wide"\n')
+
+    with pytest.raises(jsonschema.ValidationError):
+        load_config(config_path)

@@ -144,6 +144,8 @@ labels = []                            # default PR label(s) to filter on; all m
 branch_prefixes = ["renovate/", "dependabot/"]  # default branch-name prefix(es) to filter on; any one matches
 match_mode = "and"                     # "and" (default) or "or" - how labels + branch_prefixes combine
 sort_by = "repo"                       # "repo" (default), "age", or "title"
+title_min_width = 40                   # minimum width (in chars) of the Title column (default 40)
+# title_max_width = 80                 # optional; caps how wide the Title column can grow (default: unset, no cap other than terminal width)
 myprojects_path = "~/path/to/myprojects.yaml"  # defaults to a file next to this config
 
 [github]
