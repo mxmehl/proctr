@@ -23,6 +23,7 @@ from textual.containers import Container
 from textual.widgets import DataTable, Footer, Header
 
 if TYPE_CHECKING:
+    from textual import events
     from textual.app import SeverityLevel
     from textual.widgets.data_table import ColumnKey
 
@@ -44,7 +45,6 @@ if TYPE_CHECKING:
 COLUMNS = ("Sel", "Repo", "Title", "Age", "Pipeline", "Mergeable", "Review", "#PR")
 CHECKED = "[X]"
 UNCHECKED = "[ ]"
-TITLE_MAX_LEN = 40
 
 SORT_KEYS: dict[str, tuple[str, ...]] = {
     "repo": ("repo", "created_at"),
@@ -78,11 +78,50 @@ def _sort_value(pr: PullRequest, field: str) -> str | datetime:
     return getattr(pr, field)
 
 
-def _truncate(text: str, max_len: int = TITLE_MAX_LEN) -> str:
+def _truncate(text: str, max_len: int) -> str:
     """Truncate text to max_len chars, adding an ellipsis marker if cut."""
     if len(text) <= max_len:
         return text
     return text[: max_len - 1].rstrip() + "…"
+
+
+def _compute_title_width(
+    available_width: int,
+    title_lengths: list[int],
+    min_width: int,
+    max_width: int | None,
+) -> int:
+    """Return the Title column's content width for the current terminal size and PR titles.
+
+    Grows to fit the longest title in title_lengths, so long titles aren't
+    truncated when there's room — but never below min_width (even if
+    available_width is tighter than that, in which case horizontal
+    scrolling becomes an acceptable trade-off), and never above max_width
+    if one is configured.
+    """
+    longest = max(title_lengths, default=0)
+    desired = max(longest, min_width)
+    ceiling = available_width if max_width is None else min(available_width, max_width)
+    ceiling = max(ceiling, min_width)  # the floor always wins over a tighter ceiling
+    return min(desired, ceiling)
+
+
+def _non_title_cell_values(pr: PullRequest, key: str, selected: set[str]) -> dict[str, str]:
+    """Return the plain-text content (pre-coloring) of every non-Title cell for a PR row.
+
+    Used only to measure column widths — colouring (via _pipeline_cell etc.)
+    doesn't change the printed text, so the raw values measured here match
+    exactly what ends up on screen.
+    """
+    return {
+        "Sel": CHECKED if key in selected else UNCHECKED,
+        "Repo": pr.repo.full_name,
+        "Age": _format_age(pr.created_at),
+        "Pipeline": pr.pipeline_status,
+        "Mergeable": pr.mergeable,
+        "Review": pr.review_decision or "None",
+        "#PR": str(pr.number),
+    }
 
 
 def _format_age(created_at: datetime) -> str:
@@ -316,7 +355,7 @@ class ProctrApp(App[None]):
         """Build the app's widget tree."""
         yield Header()
         with Container():
-            yield DataTable(id="pr-table", cursor_type="row")
+            yield DataTable(id="pr-table", cursor_type="row", show_row_labels=False)
         yield Footer()
 
     def _notify(
@@ -334,12 +373,9 @@ class ProctrApp(App[None]):
             logger.error(message)
 
     def on_mount(self) -> None:
-        """Set up the table columns and trigger the initial PR fetch."""
+        """Trigger the initial PR fetch; table columns are (re)built in _render_table()."""
         if self.config.github.token_command_error:
             self._notify(self.config.github.token_command_error, severity="warning", timeout=10)
-        table = self.query_one(DataTable)
-        column_keys = table.add_columns(*COLUMNS)
-        self._sel_column_key = column_keys[COLUMNS.index("Sel")]
         self.app_resume_signal.subscribe(self, self._on_app_resume)
         if self.demo:
             self._populate_table(FetchResult(pull_requests=demo_pull_requests(), errors=[]))
@@ -354,6 +390,20 @@ class ProctrApp(App[None]):
         refresh() is the simple fix rather than trying to diff what changed.
         """
         self.refresh(layout=True)
+
+    def on_resize(self, event: events.Resize) -> None:  # noqa: ARG002
+        """Recompute the Title column width on terminal resize, so it reacts live.
+
+        Guarded on pull_requests being populated: on_mount fires an initial
+        Resize before the first fetch completes, when there's nothing to
+        render yet. Deferred via call_after_refresh: at the point this event
+        fires, the DataTable widget's own .size hasn't been re-laid-out to
+        the new terminal size yet (_render_table reads table.size.width),
+        so rendering immediately would compute against the stale, pre-resize
+        width.
+        """
+        if self.pull_requests:
+            self.call_after_refresh(self._render_table)
 
     def action_refresh_prs(self) -> None:
         """Kick off a background fetch of all matching PRs."""
@@ -386,7 +436,14 @@ class ProctrApp(App[None]):
                 self._notify(f"{err.repo.full_name}: {err.error}", severity="warning", timeout=8)
 
     def _render_table(self) -> None:
-        """Re-sort (per self.sort_by) and redraw the table from self.pull_requests."""
+        """Re-sort (per self.sort_by) and redraw the table from self.pull_requests.
+
+        Rebuilds columns every call (rather than reusing add_columns() from
+        on_mount) so the Title column's width can track the terminal size
+        and the current longest title: Textual's DataTable has no public
+        API to change a column's width in place, so clear(columns=True) +
+        re-adding is the supported way to apply a new one.
+        """
         sort_fields = SORT_KEYS[self.sort_by]
         ordered = sorted(
             self.pull_requests,
@@ -394,13 +451,36 @@ class ProctrApp(App[None]):
         )
 
         table = self.query_one(DataTable)
-        table.clear()
+        cell_padding = table.cell_padding
+
+        non_title_rows = [_non_title_cell_values(pr, _pr_key(pr), self.selected) for pr in ordered]
+        other_columns = [name for name in COLUMNS if name != "Title"]
+        other_columns_width = sum(
+            max([len(name), *(len(row[name]) for row in non_title_rows)]) + 2 * cell_padding
+            for name in other_columns
+        )
+        title_lengths = [len(pr.title) for pr in ordered]
+        available_width = table.size.width - other_columns_width - 2 * cell_padding
+        title_width = _compute_title_width(
+            available_width,
+            title_lengths,
+            self.config.title_min_width,
+            self.config.title_max_width,
+        )
+
+        table.clear(columns=True)
+        column_keys = []
+        for name in COLUMNS:
+            width = title_width if name == "Title" else None
+            column_keys.append(table.add_column(name, width=width))
+        self._sel_column_key = column_keys[COLUMNS.index("Sel")]
+
         for pr in ordered:
             key = _pr_key(pr)
             table.add_row(
                 CHECKED if key in self.selected else UNCHECKED,
                 pr.repo.full_name,
-                _truncate(pr.title),
+                _truncate(pr.title, title_width),
                 _format_age(pr.created_at),
                 _pipeline_cell(pr.pipeline_status),
                 _mergeable_cell(pr.mergeable),

@@ -25,6 +25,7 @@ DEFAULT_MERGE_METHOD = "squash"
 VALID_MERGE_METHODS = {"squash", "merge", "rebase"}
 DEFAULT_SORT_BY = "repo"
 VALID_SORT_BY = {"repo", "age", "title"}
+DEFAULT_TITLE_MIN_WIDTH = 40
 DEFAULT_BRANCH_PREFIXES = ["renovate/", "dependabot/"]
 DEFAULT_MATCH_MODE = "and"
 VALID_MATCH_MODES = {"and", "or"}
@@ -47,6 +48,8 @@ CONFIG_SCHEMA = {
     "properties": {
         "merge_method": {"type": "string", "enum": sorted(VALID_MERGE_METHODS)},
         "sort_by": {"type": "string", "enum": sorted(VALID_SORT_BY)},
+        "title_min_width": {"type": "integer", "minimum": 1},
+        "title_max_width": {"type": "integer", "minimum": 1},
         "myprojects_path": {"type": "string"},
         **_FILTER_PROPERTIES,
         "github": {
@@ -246,6 +249,8 @@ class Config:
     merge_method: str
     myprojects_path: Path
     sort_by: str
+    title_min_width: int
+    title_max_width: int | None
     labels: list[str]
     branch_prefixes: list[str]
     match_mode: str
@@ -320,6 +325,12 @@ def load_config(path: Path | None = None) -> Config:
     sort_by = file_data.get("sort_by", DEFAULT_SORT_BY)
     match_mode = file_data.get("match_mode", DEFAULT_MATCH_MODE)
 
+    title_min_width = file_data.get("title_min_width", DEFAULT_TITLE_MIN_WIDTH)
+    title_max_width = file_data.get("title_max_width")
+    if title_max_width is not None and title_max_width < title_min_width:
+        msg = f"title_max_width ({title_max_width}) must be >= title_min_width ({title_min_width})"
+        raise ValueError(msg)
+
     labels, branch_prefixes, _ = _resolve_table_filters(file_data)
     if labels is None:
         # Neither labels nor branch_prefixes configured at all: default to Renovate's
@@ -334,6 +345,8 @@ def load_config(path: Path | None = None) -> Config:
         merge_method=merge_method,
         myprojects_path=myprojects_path,
         sort_by=sort_by,
+        title_min_width=title_min_width,
+        title_max_width=title_max_width,
         labels=labels,
         branch_prefixes=branch_prefixes,
         match_mode=match_mode,
