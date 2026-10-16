@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.1.1](https://github.com/mxmehl/proctr/compare/v2.1.0...v2.1.1) (2026-10-16)
+
+
+### 🔥 Bug Fixes
+
+* **deps:** update dependency platformdirs to v4.12.4 ([#59](https://github.com/mxmehl/proctr/issues/59)) ([44f75ce](https://github.com/mxmehl/proctr/commit/44f75ce491ee6d85420a3d74420ac232e6573859))
+* **deps:** update dependency platformdirs to v4.13.0 ([#65](https://github.com/mxmehl/proctr/issues/65)) ([41cbe4a](https://github.com/mxmehl/proctr/commit/41cbe4a99ea61f77843f0ea3e0cbc3abcc7561de))
+
+
+### ⚙️ Chores
+
+* **deps:** lock file maintenance ([#61](https://github.com/mxmehl/proctr/issues/61)) ([dc56ea7](https://github.com/mxmehl/proctr/commit/dc56ea7c047db65ca14f912fef37d398a2d0afb4))
+* **deps:** update actions/create-github-app-token action to v3.3.0 ([#66](https://github.com/mxmehl/proctr/issues/66)) ([1f3b18c](https://github.com/mxmehl/proctr/commit/1f3b18c40e36c7c01f1672aef1a5ea8941c5692c))
+* **deps:** update astral-sh/setup-uv action to v10.3.0 ([#62](https://github.com/mxmehl/proctr/issues/62)) ([07a071e](https://github.com/mxmehl/proctr/commit/07a071e6d0231c7a1c541a1f3be75be44e3e01de))
+* **deps:** update dependency python to 3.15 ([#64](https://github.com/mxmehl/proctr/issues/64)) ([3716fe9](https://github.com/mxmehl/proctr/commit/3716fe928e91715e37bd06ae4e1c550f3adbcbc1))
+* **deps:** update dependency uv_build to &gt;=0.13.0,&lt;0.14.0 ([#63](https://github.com/mxmehl/proctr/issues/63)) ([3cce914](https://github.com/mxmehl/proctr/commit/3cce9145616498e75d9b51dbf730015f7673cdaf))
+
 ## [2.1.0](https://github.com/mxmehl/proctr/compare/v2.0.0...v2.1.0) (2026-10-07)
 
 
