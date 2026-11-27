@@ -39,7 +39,7 @@ dependencies = [
     "platformdirs==4.14.8",
     "pyyaml==6.0.4",
     "textual==8.2.8",
-    "tomlkit==0.15.2",
+    "tomlkit==0.15.3",
 ]
 
 [project.urls]
